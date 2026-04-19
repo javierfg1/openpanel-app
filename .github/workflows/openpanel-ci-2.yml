@@ -1,0 +1,115 @@
+name: CI OpenPanel
+
+on:
+  push:
+    branches: [main, develop]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_PREFIX: ${{ secrets.DOCKER_USER }}/openpanel
+
+jobs:
+
+  # =========================
+  # 1. TEST (CI)
+  # =========================
+  test:
+    runs-on: self-hosted
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports: [5432:5432]
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+
+      clickhouse:
+        image: clickhouse/clickhouse-server:26
+        ports: [8123:8123]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install deps
+        run: pnpm install
+
+      - name: Codegen
+        run: pnpm codegen
+
+      - name: Migrate DB
+        run: pnpm migrate:deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          CLICKHOUSE_URL: http://localhost:8123/openpanel
+
+      - name: Run tests
+        run: pnpm test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          REDIS_URL: redis://localhost:6379
+          CLICKHOUSE_URL: http://localhost:8123/openpanel
+
+
+  # =========================
+  # 2. BUILD + PUSH
+  # =========================
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: [api, worker, dashboard]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 🔹 VERSIONADO SEMVER
+      - name: Set version
+        id: version
+        run: |
+          VERSION=$(jq -r .version package.json)
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "VERSION=$VERSION" >> $GITHUB_ENV
+          else
+            echo "VERSION=$VERSION-dev" >> $GITHUB_ENV
+          fi
+
+      # 🔹 LOGIN DOCKER HUB
+      - name: Login DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+
+      # 🔹 BUILD
+      - name: Build image
+        run: |
+          docker build \
+            -t $IMAGE_PREFIX-${{ matrix.service }}:$VERSION \
+            -f apps/${{ matrix.service }}/Dockerfile .
+
+      # 🔹 PUSH VERSION
+      - name: Push version
+        run: |
+          docker push $IMAGE_PREFIX-${{ matrix.service }}:$VERSION
+
+      # 🔹 TAG LATEST (solo main)
+      - name: Tag latest
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker tag \
+            $IMAGE_PREFIX-${{ matrix.service }}:$VERSION \
+            $IMAGE_PREFIX-${{ matrix.service }}:latest
+
+          docker push $IMAGE_PREFIX-${{ matrix.service }}:latest
