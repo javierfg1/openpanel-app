@@ -3,7 +3,7 @@ name: Workflow de prueba
 on:
   push:
     branches:
-      - main
+      - staging
   pull_request:
 
 jobs:
