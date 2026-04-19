@@ -2,7 +2,7 @@ name: CI OpenPanel
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, staging]
 
 env:
   REGISTRY: docker.io
