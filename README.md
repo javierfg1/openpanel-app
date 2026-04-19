@@ -133,6 +133,11 @@ Current runner version: '2.333.1'
 2026-04-19 10:57:44Z: Listening for Jobs
 
 
+# Ubicación obligatoria de los workflows para que los cambios sean detectados por el runner.
+
+/home/javi/DEVOPS/9_elgransalto/openpanel-repos/openpanel-app/.github/workflows
+
+
 
 
 
