@@ -8,9 +8,9 @@ jobs:
   build:
     runs-on: self-hosted
 
-    strategy:
-      matrix:
-        service: [api, public, worker]
+    #strategy:
+    #  matrix:
+    #  service: [api, public, worker]
 
     steps:
       - name: Checkout

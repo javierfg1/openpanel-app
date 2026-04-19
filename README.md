@@ -33,11 +33,9 @@ imagePullSecrets	Sealed Secrets	      SÍ	        Permite a K3s bajar imágenes 
 
 Como vamos a usar runners locales, no hace falta ca,biar KUBECONFIG para tener una IP pública
 
-En GitHub, solo crearemos:
+En GitHub, en el repo de la app, solo crearemos:
 
 settings → Secrets and variables → Actions → New repository secret
-
-Creamos en el repo de aplicación:
 
 ${{ secrets.DOCKER_PASSWORD }}  --> javierfg1
 ${{ secrets.DOCKER_USER }} --> NeaNao=65
