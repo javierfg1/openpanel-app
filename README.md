@@ -40,6 +40,7 @@ settings → Secrets and variables → Actions → New repository secret
 ${{ secrets.DOCKER_PASSWORD }}  --> javierfg1
 ${{ secrets.DOCKER_USER }} --> NeaNao=65
 
+
 ### Crear self-hosted
 
 Ve a tu repositorio en GitHub
