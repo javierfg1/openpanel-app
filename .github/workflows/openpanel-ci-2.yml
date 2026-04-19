@@ -30,7 +30,7 @@ jobs:
         ports: [6379:6379]
 
       clickhouse:
-        image: clickhouse/clickhouse-server:26
+        image: clickhouse/clickhouse-server:latest
         ports: [8123:8123]
 
     steps:
