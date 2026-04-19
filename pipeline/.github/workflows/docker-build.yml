@@ -3,6 +3,7 @@ name: Docker Build and Push
 on:
   workflow_dispatch:
   push:
+    branches: [main, staging]
     paths-ignore:
       # README and docs
       - "**/README*"
@@ -28,14 +29,13 @@ on:
       - "**/.gitignore"
       - "**/.eslintignore"
       - "**/.prettierignore"
-    branches: [main, staging]
 
 env:
   repo_owner: "openpanel-dev"
 
 jobs:
   lint-and-test:
-    runs-on: self-hostedg
+    runs-on: self-hosted
     services:
       postgres:
         image: postgres:16-alpine
