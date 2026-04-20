@@ -190,8 +190,10 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          #cache-from: type=gha
+          #cache-to: type=gha,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
           tags: |
             ghcr.io/${{ env.repo_owner }}/api:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           build-args: |
@@ -254,8 +256,10 @@ jobs:
           context: .
           file: apps/worker/Dockerfile
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          #cache-from: type=gha
+          #cache-to: type=gha,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
           tags: |
             ghcr.io/${{ env.repo_owner }}/worker:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           build-args: |
@@ -315,8 +319,10 @@ jobs:
           context: .
           file: apps/start/Dockerfile
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          #cache-from: type=gha
+          #cache-to: type=gha,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
           tags: |
             ghcr.io/${{ env.repo_owner }}/dashboard:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           build-args: |
