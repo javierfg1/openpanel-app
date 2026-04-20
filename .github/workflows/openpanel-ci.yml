@@ -138,7 +138,7 @@ jobs:
 
 
   # Este job:
-  #   construye la imagen Docker del API
+  #   Construye la imagen Docker del API
   #   La sube a un registry (GHCR)
   #   Etiqueta la versión
   #   Solo se ejecuta si cambia el API
