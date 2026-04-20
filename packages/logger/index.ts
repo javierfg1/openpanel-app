@@ -64,26 +64,14 @@ export function createLogger({ name }: { name: string }): ILogger {
     'apiKey',
   ];
 
-  const sensitiveUrlParamPattern = new RegExp(
-    `([?&])(${sensitiveKeys.join('|')})=([^&]*)`,
-    'gi',
-  );
-
-  const redactUrl = (value: string): string =>
-    value.replace(sensitiveUrlParamPattern, '$1$2=[REDACTED]');
-
   const redactSensitiveInfo = winston.format((info) => {
     const redactObject = (obj: any): any => {
-      if (!obj || typeof obj !== 'object') {
-        return obj;
-      }
+      if (!obj || typeof obj !== 'object') return obj;
 
       return Object.keys(obj).reduce((acc, key) => {
         const lowerKey = key.toLowerCase();
         if (sensitiveKeys.some((k) => lowerKey.includes(k))) {
           acc[key] = '[REDACTED]';
-        } else if (typeof obj[key] === 'string') {
-          acc[key] = redactUrl(obj[key]);
         } else if (typeof obj[key] === 'object') {
           if (obj[key] instanceof Date) {
             acc[key] = obj[key].toISOString();
@@ -97,7 +85,7 @@ export function createLogger({ name }: { name: string }): ILogger {
       }, {} as any);
     };
 
-    return { ...info, ...redactObject(info) };
+    return Object.assign({}, info, redactObject(info));
   });
 
   const transports: winston.transport[] = [];
@@ -108,12 +96,12 @@ export function createLogger({ name }: { name: string }): ILogger {
       HyperDX.getWinstonTransport(logLevel, {
         detectResources: true,
         service,
-      })
+      }),
     );
     format = winston.format.combine(
       errorFormatter(),
       redactSensitiveInfo(),
-      winston.format.json()
+      winston.format.json(),
     );
   } else {
     transports.push(new winston.transports.Console());
@@ -128,7 +116,7 @@ export function createLogger({ name }: { name: string }): ILogger {
         const metaStr =
           Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
         return `${level} ${message}${metaStr}`;
-      })
+      }),
     );
   }
 
@@ -138,7 +126,7 @@ export function createLogger({ name }: { name: string }): ILogger {
     format,
     transports,
     silent,
-    levels: { ...customLevels, ...winston.config.syslog.levels },
+    levels: Object.assign({}, customLevels, winston.config.syslog.levels),
   });
 
   return logger;

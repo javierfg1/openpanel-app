@@ -24,12 +24,12 @@ export const Route = createFileRoute(
 function Component() {
   const { projectId } = Route.useParams();
   const trpc = useTRPC();
-  const { page } = useDataTablePagination(50);
+  const { page } = useDataTablePagination();
   const { debouncedSearch } = useSearchQueryState();
   const query = useQuery(
     trpc.profile.list.queryOptions(
       {
-        cursor: page - 1,
+        cursor: (page - 1) * 50,
         projectId,
         take: 50,
         search: debouncedSearch,

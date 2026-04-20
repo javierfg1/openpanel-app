@@ -1,5 +1,4 @@
 // Test callable function API
-/** biome-ignore-all lint/correctness/noUnusedVariables: test */
 function testCallableAPI() {
   // ✅ Should work - correct callable syntax
   window.op('track', 'button_clicked', { location: 'header' });
@@ -30,7 +29,6 @@ function testDirectMethodAPI() {
   window.op.flushRevenue();
   window.op.clearRevenue();
   window.op.fetchDeviceId();
-  window.op.getDeviceId();
 
   // ❌ Should error - wrong arguments for track
   // @ts-expect-error - track expects (name: string, properties?: TrackProperties)

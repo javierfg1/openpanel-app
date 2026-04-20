@@ -8,10 +8,7 @@ describe('cachable', () => {
   beforeEach(async () => {
     redis = getRedisCache();
     // Clear any existing cache data for clean tests
-    const keys = [
-      ...await redis.keys('cachable:*'),
-      ...await redis.keys('test-key*'),
-    ];
+    const keys = await redis.keys('cachable:*');
     if (keys.length > 0) {
       await redis.del(...keys);
     }
@@ -19,10 +16,7 @@ describe('cachable', () => {
 
   afterEach(async () => {
     // Clean up after each test
-    const keys = [
-      ...await redis.keys('cachable:*'),
-      ...await redis.keys('test-key*'),
-    ];
+    const keys = await redis.keys('cachable:*');
     if (keys.length > 0) {
       await redis.del(...keys);
     }

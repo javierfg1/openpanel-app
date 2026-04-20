@@ -1,3 +1,5 @@
+import { Queue, QueueEvents } from 'bullmq';
+
 import { createHash } from 'node:crypto';
 import type {
   IServiceCreateEventPayload,
@@ -6,13 +8,12 @@ import type {
 } from '@openpanel/db';
 import { createLogger } from '@openpanel/logger';
 import { getRedisGroupQueue, getRedisQueue } from '@openpanel/redis';
-import { Queue } from 'bullmq';
 import { Queue as GroupQueue } from 'groupmq';
 import type { ITrackPayload } from '../../validation';
 
 export const EVENTS_GROUP_QUEUES_SHARDS = Number.parseInt(
   process.env.EVENTS_GROUP_QUEUES_SHARDS || '1',
-  10
+  10,
 );
 
 export const getQueueName = (name: string) =>
@@ -64,12 +65,8 @@ export interface EventsQueuePayloadIncomingEvent {
       latitude: number | undefined;
     };
     headers: Record<string, string | undefined>;
-    deviceId: string;
-    sessionId: string;
-    session?: Pick<
-      IServiceCreateEventPayload,
-      'referrer' | 'referrerName' | 'referrerType'
-    >;
+    currentDeviceId: string;
+    previousDeviceId: string;
   };
 }
 export interface EventsQueuePayloadCreateEvent {
@@ -126,31 +123,16 @@ export type CronQueuePayloadFlushProfileBackfill = {
   type: 'flushProfileBackfill';
   payload: undefined;
 };
-export type CronQueuePayloadFlushReplay = {
-  type: 'flushReplay';
-  payload: undefined;
-};
-export type CronQueuePayloadGscSync = {
-  type: 'gscSync';
-  payload: undefined;
-};
-export type CronQueuePayloadFlushGroups = {
-  type: 'flushGroups';
-  payload: undefined;
-};
 export type CronQueuePayload =
   | CronQueuePayloadSalt
   | CronQueuePayloadFlushEvents
   | CronQueuePayloadFlushSessions
   | CronQueuePayloadFlushProfiles
   | CronQueuePayloadFlushProfileBackfill
-  | CronQueuePayloadFlushReplay
-  | CronQueuePayloadFlushGroups
   | CronQueuePayloadPing
   | CronQueuePayloadProject
   | CronQueuePayloadInsightsDaily
-  | CronQueuePayloadOnboarding
-  | CronQueuePayloadGscSync;
+  | CronQueuePayloadOnboarding;
 
 export type MiscQueuePayloadTrialEndingSoon = {
   type: 'trialEndingSoon';
@@ -165,12 +147,12 @@ export type CronQueueType = CronQueuePayload['type'];
 
 const orderingDelayMs = Number.parseInt(
   process.env.ORDERING_DELAY_MS || '100',
-  10
+  10,
 );
 
 const autoBatchMaxWaitMs = Number.parseInt(
   process.env.AUTO_BATCH_MAX_WAIT_MS || '0',
-  10
+  10,
 );
 const autoBatchSize = Number.parseInt(process.env.AUTO_BATCH_SIZE || '0', 10);
 
@@ -181,12 +163,12 @@ export const eventsGroupQueues = Array.from({
     new GroupQueue<EventsQueuePayloadIncomingEvent['payload']>({
       logger: process.env.NODE_ENV === 'production' ? queueLogger : undefined,
       namespace: getQueueName(
-        list.length === 1 ? 'group_events' : `group_events_${index}`
+        list.length === 1 ? 'group_events' : `group_events_${index}`,
       ),
       redis: getRedisGroupQueue(),
-      keepCompleted: 1,
+      keepCompleted: 1_000,
       keepFailed: 10_000,
-      orderingDelayMs,
+      orderingDelayMs: orderingDelayMs,
       autoBatch:
         autoBatchMaxWaitMs && autoBatchSize
           ? {
@@ -194,7 +176,7 @@ export const eventsGroupQueues = Array.from({
               size: autoBatchSize,
             }
           : undefined,
-    })
+    }),
 );
 
 export const getEventsGroupQueueShard = (groupId: string) => {
@@ -211,10 +193,13 @@ export const sessionsQueue = new Queue<SessionsQueuePayload>(
   {
     connection: getRedisQueue(),
     defaultJobOptions: {
-      removeOnComplete: true,
+      removeOnComplete: 10,
     },
-  }
+  },
 );
+export const sessionsQueueEvents = new QueueEvents(getQueueName('sessions'), {
+  connection: getRedisQueue(),
+});
 
 export const cronQueue = new Queue<CronQueuePayload>(getQueueName('cron'), {
   connection: getRedisQueue(),
@@ -244,7 +229,7 @@ export const notificationQueue = new Queue<NotificationQueuePayload>(
     defaultJobOptions: {
       removeOnComplete: 10,
     },
-  }
+  },
 );
 
 export type ImportQueuePayload = {
@@ -262,7 +247,7 @@ export const importQueue = new Queue<ImportQueuePayload>(
       removeOnComplete: 10,
       removeOnFail: 50,
     },
-  }
+  },
 );
 
 export type InsightsQueuePayloadProject = {
@@ -277,23 +262,5 @@ export const insightsQueue = new Queue<InsightsQueuePayloadProject>(
     defaultJobOptions: {
       removeOnComplete: 100,
     },
-  }
-);
-
-export type GscQueuePayloadSync = {
-  type: 'gscProjectSync';
-  payload: { projectId: string };
-};
-export type GscQueuePayloadBackfill = {
-  type: 'gscProjectBackfill';
-  payload: { projectId: string };
-};
-export type GscQueuePayload = GscQueuePayloadSync | GscQueuePayloadBackfill;
-
-export const gscQueue = new Queue<GscQueuePayload>(getQueueName('gsc'), {
-  connection: getRedisQueue(),
-  defaultJobOptions: {
-    removeOnComplete: 50,
-    removeOnFail: 100,
   },
-});
+);

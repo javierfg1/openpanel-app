@@ -42,7 +42,6 @@
         "useSemanticElements": "off"
       },
       "style": {
-        "noNestedTernary": "off",
         "noNonNullAssertion": "off",
         "noParameterAssign": "error",
         "useAsConstAssertion": "error",
@@ -53,34 +52,25 @@
         "noUnusedTemplateLiteral": "error",
         "useNumberNamespace": "error",
         "noInferrableTypes": "error",
-        "noUselessElse": "error",
-        "useDefaultSwitchClause": "off",
-        "noParameterProperties": "off",
-        "useConsistentMemberAccessibility": "off"
+        "noUselessElse": "error"
       },
       "correctness": {
         "useExhaustiveDependencies": "off",
-        "noUnreachable": "off",
-        "noGlobalDirnameFilename": "off"
+        "noUnreachable": "off"
       },
       "performance": {
         "noDelete": "off",
-        "noAccumulatingSpread": "off",
-        "noBarrelFile": "off",
-        "noNamespaceImport": "off",
-        "useTopLevelRegex": "off"
+        "noAccumulatingSpread": "off"
       },
       "suspicious": {
         "noExplicitAny": "off",
-        "noShadowRestrictedNames": "off",
-        "useAwait": "off"
+        "noShadowRestrictedNames": "off"
       },
       "security": {
         "noDangerouslySetInnerHtml": "off"
       },
       "complexity": {
-        "noForEach": "off",
-        "noExcessiveCognitiveComplexity": "off"
+        "noForEach": "off"
       }
     }
   },

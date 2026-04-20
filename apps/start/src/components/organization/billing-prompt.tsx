@@ -1,3 +1,8 @@
+import { PageHeader } from '@/components/page-header';
+import { Button, LinkButton } from '@/components/ui/button';
+import { useNumber } from '@/hooks/use-numer-formatter';
+import { useTRPC } from '@/integrations/trpc/react';
+import { op } from '@/utils/op';
 import type { IServiceOrganization } from '@openpanel/db';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -6,17 +11,11 @@ import {
   InfinityIcon,
   type LucideIcon,
   MapIcon,
-  SearchIcon,
   ShieldCheckIcon,
   TrendingUpIcon,
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/page-header';
-import { Button, LinkButton } from '@/components/ui/button';
-import { useNumber } from '@/hooks/use-numer-formatter';
-import { useTRPC } from '@/integrations/trpc/react';
-import { op } from '@/utils/op';
 
 const COPY = {
   expired: {
@@ -60,7 +59,7 @@ export default function BillingPrompt({
   const { data: products, isLoading: isLoadingProducts } = useQuery(
     trpc.subscription.products.queryOptions({
       organizationId: organization.id,
-    })
+    }),
   );
   const checkout = useMutation(
     trpc.subscription.checkout.mutationOptions({
@@ -73,14 +72,15 @@ export default function BillingPrompt({
           });
         }
       },
-    })
+    }),
   );
   const { title, description, body } = COPY[type];
 
   const bestProductFit = products?.find(
     (product) =>
       typeof product.metadata.eventsLimit === 'number' &&
-      product.metadata.eventsLimit >= organization.subscriptionPeriodEventsCount
+      product.metadata.eventsLimit >=
+        organization.subscriptionPeriodEventsCount,
   );
 
   useEffect(() => {
@@ -98,30 +98,32 @@ export default function BillingPrompt({
       }).format(
         bestProductFit.prices[0] && 'priceAmount' in bestProductFit.prices[0]
           ? bestProductFit.prices[0].priceAmount / 100
-          : 0
+          : 0,
       )
     : null;
 
   return (
-    <div className="mx-auto max-w-7xl p-4 md:p-20">
-      <div className="items-center overflow-hidden rounded-lg border bg-def-200 p-2">
+    <div className="p-4 md:p-20 max-w-7xl mx-auto">
+      <div className="border rounded-lg overflow-hidden bg-def-200 p-2 items-center">
         <div className="md:row">
-          <div className="col flex-1 gap-4 rounded-md border bg-background p-6">
-            <PageHeader description={description} title={title} />
+          <div className="p-6 bg-background rounded-md border col gap-4 flex-1">
+            <PageHeader title={title} description={description} />
             {body.map((paragraph) => (
               <p key={paragraph}>
                 {paragraph.replace(
                   '{{events}}',
-                  number.format(organization.subscriptionPeriodEventsCount ?? 0)
+                  number.format(
+                    organization.subscriptionPeriodEventsCount ?? 0,
+                  ),
                 )}
               </p>
             ))}
-            <div className="col mt-auto gap-2">
+            <div className="col gap-2 mt-auto">
               {bestProductFit && (
-                <div className="text-muted-foreground text-sm leading-normal">
+                <div className="text-sm text-muted-foreground leading-normal">
                   Based on your usage (
                   {number.format(
-                    organization.subscriptionPeriodEventsCount ?? 0
+                    organization.subscriptionPeriodEventsCount ?? 0,
                   )}{' '}
                   events) we recommend upgrading <br />
                   to the <strong>{bestProductFit.name}</strong> plan for{' '}
@@ -130,8 +132,9 @@ export default function BillingPrompt({
               )}
               <div className="col md:row gap-2">
                 <Button
-                  disabled={!bestProductFit}
+                  size="lg"
                   loading={isLoadingProducts}
+                  disabled={!bestProductFit}
                   onClick={() => {
                     if (bestProductFit) {
                       op.track('billing_prompt_upgrade_clicked', {
@@ -149,34 +152,33 @@ export default function BillingPrompt({
                       });
                     }
                   }}
-                  size="lg"
                 >
                   Upgrade to {price}
                 </Button>
                 <LinkButton
-                  params={{ organizationId: organization.id }}
                   size="lg"
-                  to="/$organizationId/billing"
                   variant="outline"
+                  to="/$organizationId/billing"
+                  params={{ organizationId: organization.id }}
                 >
                   View pricing
                 </LinkButton>
               </div>
             </div>
           </div>
-          <div className="col min-w-[200px] max-w-[300px] flex-1 shrink-0 gap-4 p-6">
+          <div className="shrink-0 flex-1 p-6 gap-4 col min-w-[200px] max-w-[300px]">
             <Point icon={DollarSignIcon}>Plans start at just $2.5/month</Point>
             <Point icon={InfinityIcon}>
               Unlimited reports, members and projects
             </Point>
             <Point icon={BarChart3Icon}>Advanced funnels and conversions</Point>
             <Point icon={MapIcon}>Real-time analytics</Point>
-            <Point icon={TrendingUpIcon}>Track KPIs and custom events</Point>
+            <Point icon={TrendingUpIcon}>
+              Track KPIs and custom events (revenue soon)
+            </Point>
             <Point icon={ShieldCheckIcon}>
               Privacy-focused and GDPR compliant
             </Point>
-            <Point icon={DollarSignIcon}>Revenue tracking</Point>
-            <Point icon={SearchIcon}>Google Search Console integration</Point>
           </div>
         </div>
       </div>
@@ -187,16 +189,13 @@ export default function BillingPrompt({
 function Point({
   icon: Icon,
   children,
-}: {
-  icon: LucideIcon;
-  children: React.ReactNode;
-}) {
+}: { icon: LucideIcon; children: React.ReactNode }) {
   return (
     <div className="row gap-2">
-      <div className="center-center size-6 shrink-0 rounded-full bg-amber-500 text-white">
+      <div className="size-6 shrink-0 center-center rounded-full bg-amber-500 text-white">
         <Icon className="size-4" />
       </div>
-      <h3 className="mt-[1.5px] font-medium">{children}</h3>
+      <h3 className="font-medium mt-[1.5px]">{children}</h3>
     </div>
   );
 }

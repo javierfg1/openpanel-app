@@ -3,7 +3,7 @@ import { type VariantProps, cva } from 'class-variance-authority';
 import { ArrowDownIcon, ArrowUpIcon } from 'lucide-react';
 
 const deltaChipVariants = cva(
-  'flex items-center justify-center gap-1 rounded-full font-semibold',
+  'flex items-center gap-1 rounded-full px-2 py-1 text-sm font-semibold',
   {
     variants: {
       variant: {
@@ -12,10 +12,9 @@ const deltaChipVariants = cva(
         default: 'bg-muted text-muted-foreground',
       },
       size: {
-        xs: 'px-1.5 py-0 leading-none text-[10px]',
-        sm: 'px-2 py-1 text-xs',
-        md: 'px-2 py-1 text-sm',
-        lg: 'px-2 py-1 text-base',
+        sm: 'text-xs',
+        md: 'text-sm',
+        lg: 'text-base',
       },
     },
     defaultVariants: {
@@ -31,7 +30,6 @@ type DeltaChipProps = VariantProps<typeof deltaChipVariants> & {
 };
 
 const iconVariants: Record<NonNullable<DeltaChipProps['size']>, number> = {
-  xs: 8,
   sm: 12,
   md: 16,
   lg: 20,

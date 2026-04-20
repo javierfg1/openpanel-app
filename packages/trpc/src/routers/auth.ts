@@ -8,7 +8,6 @@ import {
   google,
   hashPassword,
   invalidateSession,
-  setLastAuthProviderCookie,
   setSessionTokenCookie,
   validateSessionToken,
   verifyPasswordHash,
@@ -21,6 +20,7 @@ import {
   getUserAccount,
 } from '@openpanel/db';
 import { sendEmail } from '@openpanel/email';
+import { deleteCache } from '@openpanel/redis';
 import {
   zRequestResetPassword,
   zResetPassword,
@@ -81,7 +81,7 @@ export const authRouter = createTRPCRouter({
     .input(z.object({ provider: zProvider, inviteId: z.string().nullish() }))
     .mutation(async ({ input, ctx }) => {
       const isRegistrationAllowed = await getIsRegistrationAllowed(
-        input.inviteId
+        input.inviteId,
       );
 
       if (!isRegistrationAllowed) {
@@ -137,7 +137,7 @@ export const authRouter = createTRPCRouter({
     .input(zSignUpEmail)
     .mutation(async ({ input, ctx }) => {
       const isRegistrationAllowed = await getIsRegistrationAllowed(
-        input.inviteId
+        input.inviteId,
       );
 
       if (!isRegistrationAllowed) {
@@ -187,7 +187,7 @@ export const authRouter = createTRPCRouter({
       rateLimitMiddleware({
         max: 3,
         windowMs: 30_000,
-      })
+      }),
     )
     .input(zSignInEmail)
     .mutation(async ({ input, ctx }) => {
@@ -210,7 +210,7 @@ export const authRouter = createTRPCRouter({
         if (user.account.password?.startsWith('$argon2')) {
           const validPassword = await verifyPasswordHash(
             user.account.password ?? '',
-            password
+            password,
           );
 
           if (!validPassword) {
@@ -218,7 +218,7 @@ export const authRouter = createTRPCRouter({
           }
         } else {
           throw TRPCAccessError(
-            'Reset your password, old password has expired'
+            'Reset your password, old password has expired',
           );
         }
       }
@@ -226,7 +226,6 @@ export const authRouter = createTRPCRouter({
       const token = generateSessionToken();
       const session = await createSession(token, user.id);
       setSessionTokenCookie(ctx.setCookie, token, session.expiresAt);
-      setLastAuthProviderCookie(ctx.setCookie, 'email');
       return {
         type: 'email',
       };
@@ -238,7 +237,7 @@ export const authRouter = createTRPCRouter({
       rateLimitMiddleware({
         max: 3,
         windowMs: 60_000,
-      })
+      }),
     )
     .mutation(async ({ input, ctx }) => {
       const { token, password } = input;
@@ -276,7 +275,7 @@ export const authRouter = createTRPCRouter({
       rateLimitMiddleware({
         max: 3,
         windowMs: 60_000,
-      })
+      }),
     )
     .input(zRequestResetPassword)
     .mutation(async ({ input, ctx }) => {
@@ -325,7 +324,7 @@ export const authRouter = createTRPCRouter({
   }),
 
   extendSession: publicProcedure.mutation(async ({ ctx }) => {
-    if (!(ctx.session.session && ctx.cookies.session)) {
+    if (!ctx.session.session || !ctx.cookies.session) {
       return { extended: false };
     }
 
@@ -349,7 +348,7 @@ export const authRouter = createTRPCRouter({
       rateLimitMiddleware({
         max: 3,
         windowMs: 30_000,
-      })
+      }),
     )
     .input(zSignInShare)
     .mutation(async ({ input, ctx }) => {

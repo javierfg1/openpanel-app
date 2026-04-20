@@ -1,9 +1,9 @@
+import { useAppContext } from '@/hooks/use-app-context';
+import { cn } from '@/utils/cn';
 import { MenuIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import { LogoSquare } from './logo';
-import { Button } from './ui/button';
-import { useAppContext } from '@/hooks/use-app-context';
-import { cn } from '@/utils/cn';
+import { Button, LinkButton } from './ui/button';
 
 export function LoginNavbar({ className }: { className?: string }) {
   const { isSelfHosted } = useAppContext();
@@ -12,61 +12,59 @@ export function LoginNavbar({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'row absolute top-0 left-0 z-10 w-full items-center justify-between p-8',
-        className
+        'absolute top-0 left-0 w-full row justify-between items-center p-8 z-10',
+        className,
       )}
     >
-      <a className="row items-center gap-2" href="https://openpanel.dev">
+      <a href="https://openpanel.dev" className="row items-center gap-2">
         <LogoSquare className="size-8 shrink-0" />
-        <span className="font-medium text-muted-foreground text-sm">
+        <span className="font-medium text-sm text-muted-foreground">
           {isSelfHosted ? 'Self-hosted analytics' : 'OpenPanel.dev'}
         </span>
       </a>
-      {isSelfHosted && (
-        <nav className="max-md:hidden">
-          <ul className="row items-center gap-4 [&>li>a]:text-muted-foreground [&>li>a]:text-sm [&>li>a]:hover:underline">
-            <li>
-              <a href="https://openpanel.dev">OpenPanel Cloud</a>
-            </li>
-            <li>
-              <a href="https://openpanel.dev/compare/mixpanel-alternative">
-                Mixpanel alternative
-              </a>
-            </li>
-            <li>
-              <a href="https://openpanel.dev/compare/posthog-alternative">
-                Posthog alternative
-              </a>
-            </li>
-            <li>
-              <a href="https://openpanel.dev/articles/open-source-web-analytics">
-                Open source analytics
-              </a>
-            </li>
-          </ul>
-        </nav>
-      )}
-      <div className="relative md:hidden">
+      <nav className="max-md:hidden">
+        <ul className="row gap-4 items-center [&>li>a]:text-sm [&>li>a]:text-muted-foreground [&>li>a]:hover:underline">
+          <li>
+            <a href="https://openpanel.dev">OpenPanel Cloud</a>
+          </li>
+          <li>
+            <a href="https://openpanel.dev/compare/mixpanel-alternative">
+              Mixpanel alternative
+            </a>
+          </li>
+          <li>
+            <a href="https://openpanel.dev/compare/posthog-alternative">
+              Posthog alternative
+            </a>
+          </li>
+          <li>
+            <a href="https://openpanel.dev/articles/open-source-web-analytics">
+              Open source analytics
+            </a>
+          </li>
+        </ul>
+      </nav>
+      <div className="md:hidden relative">
         <Button
-          onClick={() => setMobileMenuOpen((prev) => !prev)}
           size="icon"
           variant="ghost"
+          onClick={() => setMobileMenuOpen((prev) => !prev)}
         >
           {mobileMenuOpen ? <XIcon size={20} /> : <MenuIcon size={20} />}
         </Button>
         {mobileMenuOpen && (
           <>
             <button
-              className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
-              onClick={() => setMobileMenuOpen(false)}
               type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
             />
-            <nav className="absolute top-full right-0 z-50 mt-2 min-w-48 rounded-md border border-border bg-card py-2 shadow-lg">
-              <ul className="flex flex-col *:text-muted-foreground *:text-sm">
+            <nav className="absolute right-0 top-full mt-2 z-50 bg-card border border-border rounded-md shadow-lg min-w-48 py-2">
+              <ul className="flex flex-col *:text-sm *:text-muted-foreground">
                 <li>
                   <a
-                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     href="https://openpanel.dev"
+                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     OpenPanel Cloud
@@ -74,8 +72,8 @@ export function LoginNavbar({ className }: { className?: string }) {
                 </li>
                 <li>
                   <a
-                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     href="https://openpanel.dev/compare/mixpanel-alternative"
+                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Posthog alternative
@@ -83,8 +81,8 @@ export function LoginNavbar({ className }: { className?: string }) {
                 </li>
                 <li>
                   <a
-                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     href="https://openpanel.dev/compare/mixpanel-alternative"
+                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Mixpanel alternative
@@ -92,8 +90,8 @@ export function LoginNavbar({ className }: { className?: string }) {
                 </li>
                 <li>
                   <a
-                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     href="https://openpanel.dev/articles/open-source-web-analytics"
+                    className="block px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Open source analytics

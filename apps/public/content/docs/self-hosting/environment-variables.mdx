@@ -262,20 +262,26 @@ ALLOW_INVITATION=false
 
 ## AI Features
 
-The in-app AI chat supports **OpenAI** and **Anthropic** models. Set one or both provider keys on the API service — the model picker in the chat UI automatically shows only the models whose provider has a key configured. If neither is set, the chat drawer still opens but shows setup instructions instead of suggestions.
+### AI_MODEL
 
-Available models:
+**Type**: `string`  
+**Required**: No  
+**Default**: `gpt-4.1-mini`
 
-- **OpenAI** — `GPT-4.1`, `GPT-4.1 mini`, `GPT-5.4 mini`
-- **Anthropic** — `Claude Haiku 4.5`, `Claude Sonnet 4.6`, `Claude Opus 4.6`
+AI model to use for the analytics assistant. Options: `gpt-4o`, `gpt-4o-mini`, `claude-3-5`.
+
+**Example**:
+```bash
+AI_MODEL=gpt-4o-mini
+```
 
 ### OPENAI_API_KEY
 
 **Type**: `string`  
-**Required**: No  
+**Required**: No (required if using OpenAI models)  
 **Default**: None
 
-OpenAI API key. When set, the OpenAI models appear in the chat model picker.
+OpenAI API key for AI features. Required if `AI_MODEL` is set to `gpt-4o` or `gpt-4o-mini`.
 
 **Example**:
 ```bash
@@ -285,18 +291,31 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 ### ANTHROPIC_API_KEY
 
 **Type**: `string`  
-**Required**: No  
+**Required**: No (required if using Claude models)  
 **Default**: None
 
-Anthropic API key. When set, the Claude models appear in the chat model picker.
+Anthropic API key for Claude AI models. Required if `AI_MODEL` is set to `claude-3-5`.
 
 **Example**:
 ```bash
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+ANTHROPIC_API_KEY=your-anthropic-api-key-here
+```
+
+### GEMINI_API_KEY
+
+**Type**: `string`  
+**Required**: No  
+**Default**: None
+
+Google Gemini API key for Gemini AI models. Currently not used but reserved for future support.
+
+**Example**:
+```bash
+GEMINI_API_KEY=your-gemini-api-key-here
 ```
 
 <Callout type="info">
-The AI assistant is optional. Without `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` set, every other OpenPanel feature continues to work normally.
+The AI assistant is optional. Without an API key configured, the AI chat feature will not be available, but all other OpenPanel features will continue to work normally.
 </Callout>
 
 ## Email
@@ -836,7 +855,8 @@ For a basic self-hosted installation, these variables are required:
 
 - `RESEND_API_KEY` - For email features
 - `EMAIL_SENDER` - Email sender address
-- `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` - For the in-app AI chat assistant
+- `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` - For AI features
+- `AI_MODEL` - AI model selection
 
 ### See Also
 

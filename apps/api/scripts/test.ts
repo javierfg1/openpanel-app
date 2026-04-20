@@ -63,7 +63,6 @@ async function main() {
         imported_at: null,
         sdk_name: 'test-script',
         sdk_version: '1.0.0',
-        groups: [],
       });
     }
 

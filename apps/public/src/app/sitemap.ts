@@ -1,5 +1,4 @@
 import type { MetadataRoute } from 'next';
-import { getAllForSlugs } from '@/lib/for';
 import { url } from '@/lib/layout.shared';
 import {
   articleSource,
@@ -15,7 +14,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const docs = await source.getPages();
   const pages = await pageSource.getPages();
   const guides = await guideSource.getPages();
-  const forSlugs = await getAllForSlugs();
   return [
     {
       url: url('/'),
@@ -118,18 +116,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
     ...featureSource.map((item) => ({
       url: url(item.url),
-      changeFrequency: 'monthly' as const,
-      priority: 0.8,
-    })),
-    {
-      url: url('/for'),
-      lastModified: new Date(),
-      changeFrequency: 'monthly' as const,
-      priority: 0.7,
-    },
-    ...forSlugs.map((slug) => ({
-      url: url(`/for/${slug}`),
-      lastModified: new Date(),
       changeFrequency: 'monthly' as const,
       priority: 0.8,
     })),

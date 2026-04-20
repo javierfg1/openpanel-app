@@ -1,7 +1,18 @@
+import {
+  X_AXIS_STYLE_PROPS,
+  useXAxisProps,
+  useYAxisProps,
+} from '@/components/report-chart/common/axis';
+import { Widget, WidgetBody, WidgetHead } from '@/components/widget';
+import { useNumber } from '@/hooks/use-numer-formatter';
+import { useTRPC } from '@/integrations/trpc/react';
+import { formatDate } from '@/utils/date';
+import { getChartColor } from '@/utils/theme';
 import { sum } from '@openpanel/common';
 import type { IServiceOrganization } from '@openpanel/db';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2Icon } from 'lucide-react';
+import { pick } from 'ramda';
 import {
   Bar,
   BarChart,
@@ -12,24 +23,16 @@ import {
   YAxis,
 } from 'recharts';
 import { BarShapeBlue } from '../charts/common-bar';
-import {
-  useXAxisProps,
-  useYAxisProps,
-} from '@/components/report-chart/common/axis';
-import { Widget, WidgetBody, WidgetHead } from '@/components/widget';
-import { useNumber } from '@/hooks/use-numer-formatter';
-import { useTRPC } from '@/integrations/trpc/react';
-import { formatDate } from '@/utils/date';
 
-interface Props {
+type Props = {
   organization: IServiceOrganization;
-}
+};
 
 function Card({ title, value }: { title: string; value: string }) {
   return (
-    <div className="col min-w-0 flex-1 gap-2 p-4" title={`${title}: ${value}`}>
-      <div className="truncate text-muted-foreground">{title}</div>
-      <div className="truncate font-bold font-mono text-xl">{value}</div>
+    <div className="col gap-2 p-4 flex-1 min-w-0" title={`${title}: ${value}`}>
+      <div className="text-muted-foreground truncate">{title}</div>
+      <div className="font-mono text-xl font-bold truncate">{value}</div>
     </div>
   );
 }
@@ -40,20 +43,18 @@ export default function BillingUsage({ organization }: Props) {
   const usageQuery = useQuery(
     trpc.subscription.usage.queryOptions({
       organizationId: organization.id,
-    })
+    }),
   );
 
   // Determine interval based on data range - use weekly if more than 30 days
   const getDataInterval = () => {
-    if (!usageQuery.data || usageQuery.data.length === 0) {
-      return 'day';
-    }
+    if (!usageQuery.data || usageQuery.data.length === 0) return 'day';
 
     const dates = usageQuery.data.map((item) => new Date(item.day));
     const minDate = new Date(Math.min(...dates.map((d) => d.getTime())));
     const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())));
     const daysDiff = Math.ceil(
-      (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)
+      (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24),
     );
 
     return daysDiff > 30 ? 'week' : 'day';
@@ -77,7 +78,7 @@ export default function BillingUsage({ organization }: Props) {
     return wrapper(
       <div className="center-center p-8">
         <Loader2Icon className="animate-spin" />
-      </div>
+      </div>,
     );
   }
 
@@ -85,16 +86,13 @@ export default function BillingUsage({ organization }: Props) {
     return wrapper(
       <div className="center-center p-8 font-medium">
         Issues loading usage data
-      </div>
+      </div>,
     );
   }
 
-  if (
-    usageQuery.data?.length === 0 ||
-    !usageQuery.data?.some((item) => item.count !== 0)
-  ) {
+  if (usageQuery.data?.length === 0) {
     return wrapper(
-      <div className="center-center p-8 font-medium">No usage data yet</div>
+      <div className="center-center p-8 font-medium">No usage data yet</div>,
     );
   }
 
@@ -107,9 +105,7 @@ export default function BillingUsage({ organization }: Props) {
 
   // Group daily data into weekly intervals if data spans more than 30 days
   const processChartData = () => {
-    if (!usageQuery.data) {
-      return [];
-    }
+    if (!usageQuery.data) return [];
 
     if (useWeeklyIntervals) {
       // Group daily data into weekly intervals
@@ -161,7 +157,7 @@ export default function BillingUsage({ organization }: Props) {
     Math.max(
       subscriptionPeriodEventsLimit,
       subscriptionPeriodEventsCount,
-      ...chartData.map((item) => item.count)
+      ...chartData.map((item) => item.count),
     ),
   ] as [number, number];
 
@@ -169,7 +165,7 @@ export default function BillingUsage({ organization }: Props) {
 
   return wrapper(
     <>
-      <div className="-m-4 mb-4 grid grid-cols-2 border-b [&>div]:shadow-[0_0_0_0.5px] [&_div]:shadow-border">
+      <div className="-m-4 mb-4 grid grid-cols-2 [&>div]:shadow-[0_0_0_0.5px] [&_div]:shadow-border border-b">
         {organization.hasSubscription ? (
           <>
             <Card
@@ -190,7 +186,7 @@ export default function BillingUsage({ organization }: Props) {
                       1 -
                         subscriptionPeriodEventsCount /
                           subscriptionPeriodEventsLimit,
-                      '%'
+                      '%',
                     )
               }
             />
@@ -212,7 +208,7 @@ export default function BillingUsage({ organization }: Props) {
               <Card
                 title="Events from last 30 days"
                 value={number.format(
-                  sum(usageQuery.data?.map((item) => item.count) ?? [])
+                  sum(usageQuery.data?.map((item) => item.count) ?? []),
                 )}
               />
             </div>
@@ -221,12 +217,12 @@ export default function BillingUsage({ organization }: Props) {
       </div>
       {/* Events Chart */}
       <div className="space-y-2">
-        <h3 className="font-medium text-muted-foreground text-sm">
+        <h3 className="text-sm font-medium text-muted-foreground">
           {useWeeklyIntervals ? 'Weekly Events' : 'Daily Events'}
         </h3>
-        <div className="h-[250px] max-h-[300px] w-full p-4">
+        <div className="max-h-[300px] h-[250px] w-full p-4">
           <ResponsiveContainer>
-            <BarChart barSize={useWeeklyIntervals ? 20 : 8} data={chartData}>
+            <BarChart data={chartData} barSize={useWeeklyIntervals ? 20 : 8}>
               <RechartTooltip
                 content={<EventsTooltip useWeekly={useWeeklyIntervals} />}
                 cursor={{
@@ -242,17 +238,16 @@ export default function BillingUsage({ organization }: Props) {
               <XAxis {...xAxisProps} dataKey="date" />
               <YAxis {...yAxisProps} domain={[0, 'dataMax']} />
               <CartesianGrid
-                className="stroke-border"
                 horizontal={true}
+                vertical={false}
                 strokeDasharray="3 3"
                 strokeOpacity={0.5}
-                vertical={false}
               />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
-    </>
+    </>,
   );
 }
 
@@ -266,7 +261,7 @@ function EventsTooltip({ useWeekly, ...props }: { useWeekly: boolean } & any) {
 
   return (
     <div className="flex min-w-[180px] flex-col gap-2 rounded-xl border bg-card p-3 shadow-xl">
-      <div className="text-muted-foreground text-sm">
+      <div className="text-sm text-muted-foreground">
         {useWeekly && payload.weekRange
           ? payload.weekRange
           : payload?.date
@@ -276,10 +271,10 @@ function EventsTooltip({ useWeekly, ...props }: { useWeekly: boolean } & any) {
       <div className="flex items-center gap-2">
         <div className="h-10 w-1 rounded-full bg-chart-0" />
         <div className="col gap-1">
-          <div className="text-muted-foreground text-sm">
+          <div className="text-sm text-muted-foreground">
             Events {useWeekly ? 'this week' : 'this day'}
           </div>
-          <div className="font-semibold text-chart-0 text-lg">
+          <div className="text-lg font-semibold text-chart-0">
             {number.format(payload.count)}
           </div>
         </div>
@@ -298,22 +293,22 @@ function TotalTooltip(props: any) {
 
   return (
     <div className="flex min-w-[180px] flex-col gap-2 rounded-xl border bg-card p-3 shadow-xl">
-      <div className="text-muted-foreground text-sm">Total Events</div>
+      <div className="text-sm text-muted-foreground">Total Events</div>
       <div className="flex items-center gap-2">
         <div className="h-10 w-1 rounded-full bg-chart-2" />
         <div className="col gap-1">
-          <div className="text-muted-foreground text-sm">Your events count</div>
-          <div className="font-semibold text-chart-2 text-lg">
+          <div className="text-sm text-muted-foreground">Your events count</div>
+          <div className="text-lg font-semibold text-chart-2">
             {number.format(payload.count)}
           </div>
         </div>
       </div>
       {payload.limit > 0 && (
         <div className="flex items-center gap-2">
-          <div className="h-10 w-1 rounded-full border-2 border-chart-1 border-dashed" />
+          <div className="h-10 w-1 rounded-full border-2 border-dashed border-chart-1" />
           <div className="col gap-1">
-            <div className="text-muted-foreground text-sm">Your tier limit</div>
-            <div className="font-semibold text-chart-1 text-lg">
+            <div className="text-sm text-muted-foreground">Your tier limit</div>
+            <div className="text-lg font-semibold text-chart-1">
               {number.format(payload.limit)}
             </div>
           </div>

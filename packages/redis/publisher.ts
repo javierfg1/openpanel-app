@@ -10,7 +10,8 @@ export type IPublishChannels = {
     };
   };
   events: {
-    batch: { projectId: string; count: number };
+    received: IServiceEvent;
+    saved: IServiceEvent;
   };
   notification: {
     created: Prisma.NotificationUncheckedCreateInput;

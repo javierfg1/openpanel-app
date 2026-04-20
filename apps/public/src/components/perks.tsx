@@ -1,13 +1,10 @@
-import type React from 'react';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
-
-type PerkIcon = LucideIcon | React.ComponentType<{ className?: string }>;
 
 export function Perks({
   perks,
   className,
-}: { perks: { text: string; icon: PerkIcon }[]; className?: string }) {
+}: { perks: { text: string; icon: LucideIcon }[]; className?: string }) {
   return (
     <ul className={cn('grid grid-cols-2 gap-2', className)}>
       {perks.map((perk) => (

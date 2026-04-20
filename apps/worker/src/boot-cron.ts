@@ -64,16 +64,6 @@ export async function bootCron() {
       pattern: 1000 * 30,
     },
     {
-      name: 'flush',
-      type: 'flushReplay',
-      pattern: 1000 * 10,
-    },
-    {
-      name: 'flush',
-      type: 'flushGroups',
-      pattern: 1000 * 10,
-    },
-    {
       name: 'insightsDaily',
       type: 'insightsDaily',
       pattern: '0 2 * * *',
@@ -82,11 +72,6 @@ export async function bootCron() {
       name: 'onboarding',
       type: 'onboarding',
       pattern: '0 * * * *',
-    },
-    {
-      name: 'gscSync',
-      type: 'gscSync',
-      pattern: '0 3 * * *',
     },
   ];
 

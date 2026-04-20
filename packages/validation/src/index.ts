@@ -69,12 +69,6 @@ export const zChartFormula = z.object({
     .string()
     .optional()
     .describe('A user-friendly name for display purposes'),
-  hideSeries: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'Alpha IDs (e.g. ["A", "B"]) of series referenced by this formula that should be hidden from the chart while still being used in the formula computation',
-    ),
 });
 
 // Event with type field for discriminated union
@@ -366,14 +360,14 @@ export const zSlackConfig = z
   .object({
     type: z.literal('slack'),
   })
-  .extend(zSlackAuthResponse.shape);
+  .merge(zSlackAuthResponse);
 
 export type ISlackConfig = z.infer<typeof zSlackConfig>;
 
 export const zWebhookConfig = z.object({
   type: z.literal('webhook'),
   url: z.string().url(),
-  headers: z.record(z.string(), z.string()),
+  headers: z.record(z.string()),
   payload: z.record(z.string(), z.unknown()).optional(),
   mode: z.enum(['message', 'javascript']).default('message'),
   javascriptTemplate: z.string().optional(),
@@ -411,13 +405,17 @@ const zCreateIntegration = z.object({
 
 export const zCreateSlackIntegration = zCreateIntegration;
 
-export const zCreateWebhookIntegration = zCreateIntegration.extend({
-  config: zWebhookConfig,
-});
+export const zCreateWebhookIntegration = zCreateIntegration.merge(
+  z.object({
+    config: zWebhookConfig,
+  }),
+);
 
-export const zCreateDiscordIntegration = zCreateIntegration.extend({
-  config: zDiscordConfig,
-});
+export const zCreateDiscordIntegration = zCreateIntegration.merge(
+  z.object({
+    config: zDiscordConfig,
+  }),
+);
 
 export const zNotificationRuleEventConfig = z.object({
   type: z.literal('events'),
@@ -490,17 +488,6 @@ export const zProject = z.object({
 });
 export type IProjectEdit = z.infer<typeof zProject>;
 
-export const zProjectUpdate = z.object({
-  id: z.string(),
-  name: z.string().min(1).optional(),
-  filters: z.array(zProjectFilters).optional(),
-  domain: z.string().url().or(z.literal('').or(z.null())).optional(),
-  cors: z.array(z.string()).optional(),
-  crossDomain: z.boolean().optional(),
-  allowUnsafeRevenueTracking: z.boolean().optional(),
-});
-export type IProjectUpdate = z.infer<typeof zProjectUpdate>;
-
 export const zPassword = z.string().min(8);
 
 export const zSignInEmail = z.object({
@@ -552,32 +539,6 @@ export const zCheckout = z.object({
   productId: z.string(),
 });
 export type ICheckout = z.infer<typeof zCheckout>;
-
-export const zGroupId = z
-  .string()
-  .min(1)
-  .regex(
-    /^[a-z0-9_-]+$/,
-    'ID must only contain lowercase letters, digits, hyphens, or underscores',
-  );
-
-export const zCreateGroup = z.object({
-  id: zGroupId,
-  projectId: z.string(),
-  type: z.string().min(1),
-  name: z.string().min(1),
-  properties: z.record(z.string(), z.string()).default({}),
-});
-export type ICreateGroup = z.infer<typeof zCreateGroup>;
-
-export const zUpdateGroup = z.object({
-  id: z.string().min(1),
-  projectId: z.string(),
-  type: z.string().min(1).optional(),
-  name: z.string().min(1).optional(),
-  properties: z.record(z.string(), z.string()).optional(),
-});
-export type IUpdateGroup = z.infer<typeof zUpdateGroup>;
 
 export const zEditOrganization = z.object({
   id: z.string().min(2),
@@ -639,4 +600,3 @@ export type ICreateImport = z.infer<typeof zCreateImport>;
 export * from './types.insights';
 export * from './track.validation';
 export * from './event-blocklist';
-export * from './chat';

@@ -1,22 +1,23 @@
-import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, Link, redirect } from '@tanstack/react-router';
-import { BoxSelectIcon } from 'lucide-react';
 import { ButtonContainer } from '@/components/button-container';
 import { FullPageEmptyState } from '@/components/full-page-empty-state';
 import FullPageLoadingState from '@/components/full-page-loading-state';
+import { CurlPreview } from '@/components/onboarding/curl-preview';
 import VerifyListener from '@/components/onboarding/onboarding-verify-listener';
-import { VerifyFaq } from '@/components/onboarding/verify-faq';
 import { LinkButton } from '@/components/ui/button';
 import { useTRPC } from '@/integrations/trpc/react';
 import { cn } from '@/lib/utils';
-import { createEntityTitle, PAGE_TITLES } from '@/utils/title';
+import { PAGE_TITLES, createEntityTitle } from '@/utils/title';
+import { useQuery } from '@tanstack/react-query';
+import { Link, createFileRoute, redirect } from '@tanstack/react-router';
+import { BoxSelectIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export const Route = createFileRoute('/_steps/onboarding/$projectId/verify')({
   head: () => ({
     meta: [{ title: createEntityTitle('Verify', PAGE_TITLES.ONBOARDING) }],
   }),
-  beforeLoad: ({ context }) => {
-    if (!context.session?.session) {
+  beforeLoad: async ({ context }) => {
+    if (!context.session.session) {
       throw redirect({ to: '/onboarding' });
     }
   },
@@ -25,53 +26,59 @@ export const Route = createFileRoute('/_steps/onboarding/$projectId/verify')({
     await context.queryClient.prefetchQuery(
       context.trpc.project.getProjectWithClients.queryOptions({
         projectId: params.projectId,
-      })
+      }),
     );
   },
   pendingComponent: FullPageLoadingState,
 });
 
 function Component() {
+  const [isVerified, setIsVerified] = useState(false);
   const { projectId } = Route.useParams();
   const trpc = useTRPC();
-  const { data: events } = useQuery(
-    trpc.event.events.queryOptions(
-      { projectId },
-      {
-        refetchInterval: 2500,
-      }
-    )
+  const { data: events, refetch } = useQuery(
+    trpc.event.events.queryOptions({ projectId }),
   );
-  const isVerified = events?.data && events.data.length > 0;
   const { data: project } = useQuery(
-    trpc.project.getProjectWithClients.queryOptions({ projectId })
+    trpc.project.getProjectWithClients.queryOptions({ projectId }),
   );
+
+  useEffect(() => {
+    if (events && events.data.length > 0) {
+      setIsVerified(true);
+    }
+  }, [events]);
 
   if (!project) {
     return (
-      <FullPageEmptyState icon={BoxSelectIcon} title="Project not found" />
+      <FullPageEmptyState title="Project not found" icon={BoxSelectIcon} />
     );
   }
 
   const client = project.clients[0];
   if (!client) {
-    return <FullPageEmptyState icon={BoxSelectIcon} title="Client not found" />;
+    return <FullPageEmptyState title="Client not found" icon={BoxSelectIcon} />;
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="scrollbar-thin flex-1 overflow-y-auto">
-        <div className="col gap-8 p-4">
-          <VerifyListener events={events?.data ?? []} />
+    <div className="p-4 col gap-8">
+      <VerifyListener
+        project={project}
+        client={client}
+        events={events?.data ?? []}
+        onVerified={() => {
+          refetch();
+          setIsVerified(true);
+        }}
+      />
 
-          <VerifyFaq project={project} />
-        </div>
-      </div>
-      <ButtonContainer className="mt-0 flex-shrink-0 border-t bg-background p-4">
+      <CurlPreview project={project} />
+
+      <ButtonContainer>
         <LinkButton
-          className="min-w-28 self-start"
           href={`/onboarding/${project.id}/connect`}
           size="lg"
+          className="min-w-28 self-start"
           variant={'secondary'}
         >
           Back
@@ -80,28 +87,28 @@ function Component() {
         <div className="flex items-center gap-8">
           {!isVerified && (
             <Link
-              className="text-muted-foreground underline"
+              to={'/$organizationId/$projectId'}
               params={{
                 organizationId: project!.organizationId,
                 projectId: project!.id,
               }}
-              to={'/$organizationId/$projectId'}
+              className=" text-muted-foreground underline"
             >
               Skip for now
             </Link>
           )}
 
           <LinkButton
-            className={cn(
-              'min-w-28 self-start',
-              !isVerified && 'pointer-events-none select-none opacity-20'
-            )}
+            to={'/$organizationId/$projectId'}
             params={{
               organizationId: project!.organizationId,
               projectId: project!.id,
             }}
             size="lg"
-            to={'/$organizationId/$projectId'}
+            className={cn(
+              'min-w-28 self-start',
+              !isVerified && 'pointer-events-none select-none opacity-20',
+            )}
           >
             Your dashboard
           </LinkButton>

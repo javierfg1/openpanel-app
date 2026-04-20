@@ -1,14 +1,3 @@
-import type { IChartEvent } from '@openpanel/validation';
-import { useQuery } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'framer-motion';
-import {
-  ArrowLeftIcon,
-  Building2Icon,
-  DatabaseIcon,
-  UserIcon,
-} from 'lucide-react';
-import VirtualList from 'rc-virtual-list';
-import { type Dispatch, type SetStateAction, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -21,7 +10,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { useAppParams } from '@/hooks/use-app-params';
 import { useEventProperties } from '@/hooks/use-event-properties';
-import { useTRPC } from '@/integrations/trpc/react';
+import type { IChartEvent } from '@openpanel/validation';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeftIcon, DatabaseIcon, UserIcon } from 'lucide-react';
+import VirtualList from 'rc-virtual-list';
+import { type Dispatch, type SetStateAction, useEffect, useState } from 'react';
 
 interface PropertiesComboboxProps {
   event?: IChartEvent;
@@ -32,7 +25,6 @@ interface PropertiesComboboxProps {
     description: string;
   }) => void;
   exclude?: string[];
-  include?: string[];
   mode?: 'events' | 'profile';
 }
 
@@ -48,15 +40,15 @@ function SearchHeader({
   return (
     <div className="row items-center gap-1">
       {!!onBack && (
-        <Button onClick={onBack} size="icon" variant="ghost">
+        <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeftIcon className="size-4" />
         </Button>
       )}
       <Input
-        autoFocus
-        onChange={(e) => onSearch(e.target.value)}
         placeholder="Search"
         value={value}
+        onChange={(e) => onSearch(e.target.value)}
+        autoFocus
       />
     </div>
   );
@@ -68,68 +60,47 @@ export function PropertiesCombobox({
   onSelect,
   mode,
   exclude = [],
-  include = [],
 }: PropertiesComboboxProps) {
   const { projectId } = useAppParams();
-  const trpc = useTRPC();
   const [open, setOpen] = useState(false);
   const properties = useEventProperties({
     event: event?.name,
     projectId,
   });
-  const groupPropertiesQuery = useQuery(
-    trpc.group.properties.queryOptions({ projectId })
-  );
-  const [state, setState] = useState<'index' | 'event' | 'profile' | 'group'>(
-    'index'
-  );
+  const [state, setState] = useState<'index' | 'event' | 'profile'>('index');
   const [search, setSearch] = useState('');
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
 
   useEffect(() => {
     if (!open) {
-      setState(mode ? (mode === 'events' ? 'event' : 'profile') : 'index');
+      setState(!mode ? 'index' : mode === 'events' ? 'event' : 'profile');
     }
   }, [open, mode]);
 
-  const matchesPropertyPattern = (property: string, pattern: string) => {
-    if (pattern.endsWith('*')) {
-      return property.startsWith(pattern.slice(0, -1));
-    }
-    return property === pattern;
-  };
-
   const shouldShowProperty = (property: string) => {
-    return !exclude.some((pattern) => matchesPropertyPattern(property, pattern));
+    return !exclude.find((ex) => {
+      if (ex.endsWith('*')) {
+        return property.startsWith(ex.slice(0, -1));
+      }
+      return property === ex;
+    });
   };
 
-  const allProperties = Array.from(new Set([...properties, ...include]));
-
-  // Fixed group properties: name, type, plus dynamic property keys
-  const groupActions = [
-    { value: 'group.name', label: 'name', description: 'group' },
-    { value: 'group.type', label: 'type', description: 'group' },
-    ...(groupPropertiesQuery.data ?? []).map((key) => ({
-      value: `group.properties.${key}`,
-      label: key,
-      description: 'group.properties',
-    })),
-  ].filter((a) => shouldShowProperty(a.value));
-
-  const profileActions = allProperties
+  // Mock data for the lists
+  const profileActions = properties
     .filter(
       (property) =>
-        property.startsWith('profile') && shouldShowProperty(property)
+        property.startsWith('profile') && shouldShowProperty(property),
     )
     .map((property) => ({
       value: property,
       label: property.split('.').pop() ?? property,
       description: property.split('.').slice(0, -1).join('.'),
     }));
-  const eventActions = allProperties
+  const eventActions = properties
     .filter(
       (property) =>
-        !property.startsWith('profile') && shouldShowProperty(property)
+        !property.startsWith('profile') && shouldShowProperty(property),
     )
     .map((property) => ({
       value: property,
@@ -137,9 +108,7 @@ export function PropertiesCombobox({
       description: property.split('.').slice(0, -1).join('.'),
     }));
 
-  const handleStateChange = (
-    newState: 'index' | 'event' | 'profile' | 'group'
-  ) => {
+  const handleStateChange = (newState: 'index' | 'event' | 'profile') => {
     setDirection(newState === 'index' ? 'backward' : 'forward');
     setState(newState);
   };
@@ -166,7 +135,7 @@ export function PropertiesCombobox({
           }}
         >
           Event properties
-          <DatabaseIcon className="size-4 transition-all group-hover:rotate-12 group-hover:scale-125 group-hover:text-blue-500" />
+          <DatabaseIcon className="size-4 group-hover:text-blue-500 group-hover:scale-125 transition-all group-hover:rotate-12" />
         </DropdownMenuItem>
         <DropdownMenuItem
           className="group justify-between gap-2"
@@ -176,17 +145,7 @@ export function PropertiesCombobox({
           }}
         >
           Profile properties
-          <UserIcon className="size-4 transition-all group-hover:rotate-12 group-hover:scale-125 group-hover:text-blue-500" />
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="group justify-between gap-2"
-          onClick={(e) => {
-            e.preventDefault();
-            handleStateChange('group');
-          }}
-        >
-          Group properties
-          <Building2Icon className="size-4 transition-all group-hover:rotate-12 group-hover:scale-125 group-hover:text-blue-500" />
+          <UserIcon className="size-4 group-hover:text-blue-500 group-hover:scale-125 transition-all group-hover:rotate-12" />
         </DropdownMenuItem>
       </DropdownMenuGroup>
     );
@@ -196,7 +155,7 @@ export function PropertiesCombobox({
     const filteredActions = eventActions.filter(
       (action) =>
         action.label.toLowerCase().includes(search.toLowerCase()) ||
-        action.description.toLowerCase().includes(search.toLowerCase())
+        action.description.toLowerCase().includes(search.toLowerCase()),
     );
 
     return (
@@ -210,20 +169,20 @@ export function PropertiesCombobox({
         />
         <DropdownMenuSeparator />
         <VirtualList
-          data={filteredActions}
           height={300}
+          data={filteredActions}
           itemHeight={40}
           itemKey="id"
         >
           {(action) => (
             <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              className="col cursor-pointer gap-px rounded-md p-2 hover:bg-accent"
               initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-2 hover:bg-accent cursor-pointer rounded-md col gap-px"
               onClick={() => handleSelect(action)}
             >
               <div className="font-medium">{action.label}</div>
-              <div className="text-muted-foreground text-sm">
+              <div className="text-sm text-muted-foreground">
                 {action.description}
               </div>
             </motion.div>
@@ -237,7 +196,7 @@ export function PropertiesCombobox({
     const filteredActions = profileActions.filter(
       (action) =>
         action.label.toLowerCase().includes(search.toLowerCase()) ||
-        action.description.toLowerCase().includes(search.toLowerCase())
+        action.description.toLowerCase().includes(search.toLowerCase()),
     );
 
     return (
@@ -249,59 +208,20 @@ export function PropertiesCombobox({
         />
         <DropdownMenuSeparator />
         <VirtualList
-          data={filteredActions}
           height={300}
+          data={filteredActions}
           itemHeight={40}
           itemKey="id"
         >
           {(action) => (
             <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              className="col cursor-pointer gap-px rounded-md p-2 hover:bg-accent"
               initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-2 hover:bg-accent cursor-pointer rounded-md col gap-px"
               onClick={() => handleSelect(action)}
             >
               <div className="font-medium">{action.label}</div>
-              <div className="text-muted-foreground text-sm">
-                {action.description}
-              </div>
-            </motion.div>
-          )}
-        </VirtualList>
-      </div>
-    );
-  };
-
-  const renderGroup = () => {
-    const filteredActions = groupActions.filter(
-      (action) =>
-        action.label.toLowerCase().includes(search.toLowerCase()) ||
-        action.description.toLowerCase().includes(search.toLowerCase())
-    );
-
-    return (
-      <div className="flex flex-col">
-        <SearchHeader
-          onBack={() => handleStateChange('index')}
-          onSearch={setSearch}
-          value={search}
-        />
-        <DropdownMenuSeparator />
-        <VirtualList
-          data={filteredActions}
-          height={Math.min(300, filteredActions.length * 40 + 8)}
-          itemHeight={40}
-          itemKey="value"
-        >
-          {(action) => (
-            <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              className="col cursor-pointer gap-px rounded-md p-2 hover:bg-accent"
-              initial={{ opacity: 0, y: 10 }}
-              onClick={() => handleSelect(action)}
-            >
-              <div className="font-medium">{action.label}</div>
-              <div className="text-muted-foreground text-sm">
+              <div className="text-sm text-muted-foreground">
                 {action.description}
               </div>
             </motion.div>
@@ -313,20 +233,20 @@ export function PropertiesCombobox({
 
   return (
     <DropdownMenu
+      open={open}
       onOpenChange={(open) => {
         setOpen(open);
       }}
-      open={open}
     >
       <DropdownMenuTrigger asChild>{children(setOpen)}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-w-80">
-        <AnimatePresence initial={false} mode="wait">
+      <DropdownMenuContent className="max-w-80" align="start">
+        <AnimatePresence mode="wait" initial={false}>
           {state === 'index' && (
             <motion.div
+              key="index"
+              initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              initial={{ opacity: 0 }}
-              key="index"
               transition={{ duration: 0.05 }}
             >
               {renderIndex()}
@@ -334,10 +254,10 @@ export function PropertiesCombobox({
           )}
           {state === 'event' && (
             <motion.div
+              key="event"
+              initial={{ opacity: 0, x: direction === 'forward' ? 20 : -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: direction === 'forward' ? -20 : 20 }}
-              initial={{ opacity: 0, x: direction === 'forward' ? 20 : -20 }}
-              key="event"
               transition={{ duration: 0.05 }}
             >
               {renderEvent()}
@@ -345,24 +265,13 @@ export function PropertiesCombobox({
           )}
           {state === 'profile' && (
             <motion.div
+              key="profile"
+              initial={{ opacity: 0, x: direction === 'forward' ? 20 : -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: direction === 'forward' ? -20 : 20 }}
-              initial={{ opacity: 0, x: direction === 'forward' ? 20 : -20 }}
-              key="profile"
               transition={{ duration: 0.05 }}
             >
               {renderProfile()}
-            </motion.div>
-          )}
-          {state === 'group' && (
-            <motion.div
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: direction === 'forward' ? -20 : 20 }}
-              initial={{ opacity: 0, x: direction === 'forward' ? 20 : -20 }}
-              key="group"
-              transition={{ duration: 0.05 }}
-            >
-              {renderGroup()}
             </motion.div>
           )}
         </AnimatePresence>

@@ -1,13 +1,14 @@
 import { average, sum } from '@openpanel/common';
 import { chartColors } from '@openpanel/constants';
+import { getCache } from '@openpanel/redis';
 import { type IChartEventFilter, zTimeInterval } from '@openpanel/validation';
+import { omit } from 'ramda';
 import sqlstring from 'sqlstring';
 import { z } from 'zod';
 import {
+  TABLE_NAMES,
   ch,
   convertClickhouseDateToJs,
-  isClickhouseDefaultMinDate,
-  TABLE_NAMES,
 } from '../clickhouse/client';
 import { clix } from '../clickhouse/query-builder';
 import {
@@ -30,24 +31,6 @@ const COLUMN_PREFIX_MAP: Record<string, string> = {
   browser_version: 'browser',
   os_version: 'os',
 };
-
-const WHITELISTED_FILTERS = [
-  'os',
-  'path',
-  'city',
-  'brand',
-  'model',
-  'origin',
-  'region',
-  'device',
-  'revenue',
-  'country',
-  'browser',
-  'referrer',
-  'os_version',
-  'referrer_name',
-  'browser_version',
-];
 
 // Types
 type MetricsRow = {
@@ -189,12 +172,24 @@ export type IGetMapDataInput = z.infer<typeof zGetMapDataInput> & {
 export class OverviewService {
   constructor(private client: typeof ch) {}
 
+  // Helper methods
+  private isRollupRow(date: string): boolean {
+    // The rollup row has date 1970-01-01 00:00:00 (epoch) from ClickHouse.
+    // After transform with `new Date().toISOString()`, this becomes an ISO string.
+    // Due to timezone handling in JavaScript's Date constructor (which interprets
+    // the input as local time), the UTC date might become:
+    // - 1969-12-31T... for positive UTC offsets (e.g., UTC+8)
+    // - 1970-01-01T... for UTC or negative offsets
+    // We check for both year prefixes to handle all server timezones.
+    return date.startsWith(ROLLUP_DATE_PREFIX) || date.startsWith('1969-12-31');
+  }
+
   private getFillConfig(interval: string, startDate: string, endDate: string) {
     const useDateOnly = ['month', 'week'].includes(interval);
     return {
       from: clix.toStartOf(
         clix.datetime(startDate, useDateOnly ? 'toDate' : 'toDateTime'),
-        interval as any
+        interval as any,
       ),
       to: clix.datetime(endDate, useDateOnly ? 'toDate' : 'toDateTime'),
       step: clix.toInterval('1', interval as any),
@@ -239,12 +234,12 @@ export class OverviewService {
 
   private mergeRevenueIntoSeries<T extends { date: string }>(
     series: T[],
-    revenueData: { date: string; total_revenue: number }[]
+    revenueData: { date: string; total_revenue: number }[],
   ): (T & { total_revenue: number })[] {
     const revenueByDate = new Map(
       revenueData
-        .filter((r) => !isClickhouseDefaultMinDate(r.date))
-        .map((r) => [r.date, r.total_revenue])
+        .filter((r) => !this.isRollupRow(r.date))
+        .map((r) => [r.date, r.total_revenue]),
     );
     return series.map((row) => ({
       ...row,
@@ -253,11 +248,10 @@ export class OverviewService {
   }
 
   private getOverallRevenue(
-    revenueData: { date: string; total_revenue: number }[]
+    revenueData: { date: string; total_revenue: number }[],
   ): number {
     return (
-      revenueData.find((r) => isClickhouseDefaultMinDate(r.date))
-        ?.total_revenue ?? 0
+      revenueData.find((r) => this.isRollupRow(r.date))?.total_revenue ?? 0
     );
   }
 
@@ -269,7 +263,7 @@ export class OverviewService {
       startDate: string;
       endDate: string;
       timezone: string;
-    }
+    },
   ): ReturnType<typeof clix> {
     if (!this.isPageFilter(params.filters)) {
       query.rawWhere(this.getRawWhereClause('sessions', params.filters));
@@ -282,7 +276,7 @@ export class OverviewService {
       .where(
         'id',
         'IN',
-        clix.exp('(SELECT session_id FROM distinct_sessions)')
+        clix.exp('(SELECT session_id FROM distinct_sessions)'),
       );
   }
 
@@ -434,30 +428,6 @@ export class OverviewService {
     const where = this.getRawWhereClause('sessions', filters);
     const fillConfig = this.getFillConfig(interval, startDate, endDate);
 
-    // CTE: per-event screen_view durations via window function
-    const rawScreenViewDurationsQuery = clix(this.client, timezone)
-      .select([
-        `${clix.toStartOf('created_at', interval as any, timezone)} AS date`,
-        `dateDiff('millisecond', created_at, lead(created_at, 1, created_at) OVER (PARTITION BY session_id ORDER BY created_at)) AS duration`,
-      ])
-      .from(TABLE_NAMES.events)
-      .where('project_id', '=', projectId)
-      .where('name', '=', 'screen_view')
-      .where('created_at', 'BETWEEN', [
-        clix.datetime(startDate, 'toDateTime'),
-        clix.datetime(endDate, 'toDateTime'),
-      ])
-      .rawWhere(this.getRawWhereClause('events', filters));
-
-    // CTE: avg duration per date bucket
-    const avgDurationByDateQuery = clix(this.client, timezone)
-      .select([
-        'date',
-        'round(avgIf(duration, duration > 0), 2) / 1000 AS avg_session_duration',
-      ])
-      .from('raw_screen_view_durations')
-      .groupBy(['date']);
-
     // Session aggregation with bounce rates
     const sessionAggQuery = clix(this.client, timezone)
       .select([
@@ -505,18 +475,16 @@ export class OverviewService {
         clix(this.client, timezone)
           .select(['bounce_rate'])
           .from('session_agg')
-          .where('date', '=', rollupDate)
+          .where('date', '=', rollupDate),
       )
       .with(
         'daily_session_stats',
         clix(this.client, timezone)
           .select(['date', 'bounce_rate'])
           .from('session_agg')
-          .where('date', '!=', rollupDate)
+          .where('date', '!=', rollupDate),
       )
       .with('overall_unique_visitors', overallUniqueVisitorsQuery)
-      .with('raw_screen_view_durations', rawScreenViewDurationsQuery)
-      .with('avg_duration_by_date', avgDurationByDateQuery)
       .select<{
         date: string;
         bounce_rate: number;
@@ -533,7 +501,8 @@ export class OverviewService {
         'dss.bounce_rate as bounce_rate',
         'uniq(e.profile_id) AS unique_visitors',
         'uniq(e.session_id) AS total_sessions',
-        'coalesce(dur.avg_session_duration, 0) AS avg_session_duration',
+        'round(avgIf(duration, duration > 0), 2) / 1000 AS _avg_session_duration',
+        'if(isNaN(_avg_session_duration), 0, _avg_session_duration) AS avg_session_duration',
         'count(*) AS total_screen_views',
         'round((count(*) * 1.) / uniq(e.session_id), 2) AS views_per_session',
         '(SELECT unique_visitors FROM overall_unique_visitors) AS overall_unique_visitors',
@@ -543,11 +512,7 @@ export class OverviewService {
       .from(`${TABLE_NAMES.events} AS e`)
       .leftJoin(
         'daily_session_stats AS dss',
-        `${clix.toStartOf('e.created_at', interval as any)} = dss.date`
-      )
-      .leftJoin(
-        'avg_duration_by_date AS dur',
-        `${clix.toStartOf('e.created_at', interval as any)} = dur.date`
+        `${clix.toStartOf('e.created_at', interval as any)} = dss.date`,
       )
       .where('e.project_id', '=', projectId)
       .where('e.name', '=', 'screen_view')
@@ -556,7 +521,7 @@ export class OverviewService {
         clix.datetime(endDate, 'toDateTime'),
       ])
       .rawWhere(this.getRawWhereClause('events', filters))
-      .groupBy(['date', 'dss.bounce_rate', 'dur.avg_session_duration'])
+      .groupBy(['date', 'dss.bounce_rate'])
       .orderBy('date', 'ASC')
       .fill(fillConfig.from, fillConfig.to, fillConfig.step)
       .transform({
@@ -586,7 +551,7 @@ export class OverviewService {
       (item) =>
         item.overall_bounce_rate !== null ||
         item.overall_total_sessions !== null ||
-        item.overall_unique_visitors !== null
+        item.overall_unique_visitors !== null,
     );
 
     return {
@@ -595,11 +560,11 @@ export class OverviewService {
         unique_visitors: anyRowWithData?.overall_unique_visitors ?? 0,
         total_sessions: anyRowWithData?.overall_total_sessions ?? 0,
         avg_session_duration: average(
-          mainRes.map((item) => item.avg_session_duration)
+          mainRes.map((item) => item.avg_session_duration),
         ),
         total_screen_views: sum(mainRes.map((item) => item.total_screen_views)),
         views_per_session: average(
-          mainRes.map((item) => item.views_per_session)
+          mainRes.map((item) => item.views_per_session),
         ),
         total_revenue: overallRevenue,
       },
@@ -609,34 +574,24 @@ export class OverviewService {
 
   getRawWhereClause(type: 'events' | 'sessions', filters: IChartEventFilter[]) {
     const where = getEventFiltersWhereClause(
-      filters.flatMap((item) => {
-        if (!WHITELISTED_FILTERS.includes(item.name)) {
-          return []
-        }
+      filters.map((item) => {
         if (type === 'sessions') {
           if (item.name === 'path') {
-            return [{ ...item, name: 'entry_path' }];
+            return { ...item, name: 'entry_path' };
           }
           if (item.name === 'origin') {
-            return [{ ...item, name: 'entry_origin' }];
+            return { ...item, name: 'entry_origin' };
           }
           if (item.name.startsWith('properties.__query.utm_')) {
-            return [
-              {
-                ...item,
-                name: item.name.replace('properties.__query.utm_', 'utm_'),
-              },
-            ];
+            return {
+              ...item,
+              name: item.name.replace('properties.__query.utm_', 'utm_'),
+            };
           }
-          // sessions table has no `properties` map for arbitrary keys —
-          // drop them instead of generating an invalid WHERE clause.
-          if (item.name.startsWith('properties.')) {
-            return [];
-          }
-          return [item];
+          return item;
         }
-        return [item];
-      })
+        return item;
+      }),
     );
 
     return Object.values(where).join(' AND ');
@@ -765,10 +720,6 @@ export class OverviewService {
     column,
     timezone,
   }: IGetTopGenericInput) {
-    if (!WHITELISTED_FILTERS.includes(column)) {
-      return [];
-    }
-    
     const prefixColumn = COLUMN_PREFIX_MAP[column] ?? null;
 
     const selectColumns: (string | null | undefined | false)[] = [
@@ -928,7 +879,7 @@ export class OverviewService {
         startDate,
         endDate,
         timezone,
-      }
+      },
     );
 
     const timeSeriesData = await mainTimeSeriesQuery.execute();
@@ -1115,7 +1066,7 @@ export class OverviewService {
           .from('paths_deduped_cte')
           .having('length(paths)', '>=', 2)
           // ONLY sessions starting with top entry pages
-          .having('paths[1]', 'IN', topEntryPages)
+          .having('paths[1]', 'IN', topEntryPages),
       )
       .select<{
         source: string;
@@ -1130,8 +1081,8 @@ export class OverviewService {
       ])
       .from(
         clix.exp(
-          '(SELECT arrayJoin(arrayMap(i -> (paths[i], paths[i + 1], i), range(1, length(paths)))) as pair FROM session_paths WHERE length(paths) >= 2)'
-        )
+          '(SELECT arrayJoin(arrayMap(i -> (paths[i], paths[i + 1], i), range(1, length(paths)))) as pair FROM session_paths WHERE length(paths) >= 2)',
+        ),
       )
       .groupBy(['source', 'target', 'step'])
       .orderBy('step', 'ASC')
@@ -1192,9 +1143,7 @@ export class OverviewService {
 
         for (const t of fromSource) {
           // Skip self-loops
-          if (t.source === t.target) {
-            continue;
-          }
+          if (t.source === t.target) continue;
 
           const targetNodeId = getNodeId(t.target, step + 1);
 
@@ -1231,9 +1180,7 @@ export class OverviewService {
       }
 
       // Stop if no more nodes to process
-      if (activeNodes.size === 0) {
-        break;
-      }
+      if (activeNodes.size === 0) break;
     }
 
     // Step 5: Filter links by threshold (0.25% of total sessions)
@@ -1288,24 +1235,22 @@ export class OverviewService {
       })
       .sort((a, b) => {
         // Sort by step first, then by value descending
-        if (a.step !== b.step) {
-          return a.step - b.step;
-        }
+        if (a.step !== b.step) return a.step - b.step;
         return b.value - a.value;
       });
 
     // Sanity check: Ensure all link endpoints exist in nodes
     const nodeIds = new Set(finalNodes.map((n) => n.id));
     const invalidLinks = filteredLinks.filter(
-      (link) => !(nodeIds.has(link.source) && nodeIds.has(link.target))
+      (link) => !nodeIds.has(link.source) || !nodeIds.has(link.target),
     );
     if (invalidLinks.length > 0) {
       console.warn(
-        `UserJourney: Found ${invalidLinks.length} links with missing nodes`
+        `UserJourney: Found ${invalidLinks.length} links with missing nodes`,
       );
       // Remove invalid links
       const validLinks = filteredLinks.filter(
-        (link) => nodeIds.has(link.source) && nodeIds.has(link.target)
+        (link) => nodeIds.has(link.source) && nodeIds.has(link.target),
       );
       return {
         nodes: finalNodes,
@@ -1315,9 +1260,7 @@ export class OverviewService {
 
     // Sanity check: Ensure steps are monotonic (should always be true, but verify)
     const stepsValid = finalNodes.every((node, idx, arr) => {
-      if (idx === 0) {
-        return true;
-      }
+      if (idx === 0) return true;
       return node.step! >= arr[idx - 1]!.step!;
     });
     if (!stepsValid) {
@@ -1473,69 +1416,3 @@ export class OverviewService {
 }
 
 export const overviewService = new OverviewService(ch);
-
-import { getSettingsForProject } from './organization.service';
-
-export type TrafficColumn =
-  | 'referrer'
-  | 'referrer_name'
-  | 'referrer_type'
-  | 'utm_source'
-  | 'utm_medium'
-  | 'utm_campaign'
-  | 'country'
-  | 'region'
-  | 'city'
-  | 'device'
-  | 'browser'
-  | 'os';
-
-export async function getTrafficBreakdownCore(input: {
-  projectId: string;
-  startDate: string;
-  endDate: string;
-  column: TrafficColumn;
-  filters?: IChartEventFilter[];
-}) {
-  const { timezone } = await getSettingsForProject(input.projectId);
-  return overviewService.getTopGeneric({
-    projectId: input.projectId,
-    filters: input.filters ?? [],
-    startDate: input.startDate,
-    endDate: input.endDate,
-    column: input.column,
-    timezone,
-  });
-}
-
-export interface GetAnalyticsOverviewInput {
-  projectId: string;
-  startDate: string;
-  endDate: string;
-  interval?: 'hour' | 'day' | 'week' | 'month';
-  filters?: IChartEventFilter[];
-}
-
-export async function getAnalyticsOverviewCore(
-  input: GetAnalyticsOverviewInput,
-) {
-  const { timezone } = await getSettingsForProject(input.projectId);
-  const interval = input.interval ?? 'day';
-
-  const result = await overviewService.getMetrics({
-    projectId: input.projectId,
-    filters: input.filters ?? [],
-    startDate: input.startDate,
-    endDate: input.endDate,
-    interval,
-    timezone,
-  });
-
-  return {
-    summary: result.metrics,
-    series: result.series,
-    interval,
-    startDate: input.startDate,
-    endDate: input.endDate,
-  };
-}

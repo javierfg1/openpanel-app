@@ -4,7 +4,6 @@ import { PageHeader } from '@/components/page-header';
 import { ProfileAvatar } from '@/components/profiles/profile-avatar';
 import { SerieIcon } from '@/components/report-chart/common/serie-icon';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useEntityPageContext } from '@/hooks/use-page-context-helpers';
 import { usePageTabs } from '@/hooks/use-page-tabs';
 import { useTRPC } from '@/integrations/trpc/react';
 import { getProfileName } from '@/utils/getters';
@@ -38,25 +37,12 @@ function Component() {
     }),
   );
 
-  useEntityPageContext(
-    'profileDetail',
-    { profileId },
-    {
-      country: profile.data?.properties.country,
-      device: profile.data?.properties.device,
-      browser: profile.data?.properties.browser,
-      os: profile.data?.properties.os,
-      email: profile.data?.email,
-    },
-  );
-
   const { activeTab, tabs } = usePageTabs([
     {
       id: '/$organizationId/$projectId/profiles/$profileId',
       label: 'Overview',
     },
     { id: 'events', label: 'Events' },
-    { id: 'sessions', label: 'Sessions' },
   ]);
 
   const handleTabChange = (tabId: string) => {

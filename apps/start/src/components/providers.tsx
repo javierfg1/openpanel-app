@@ -1,7 +1,5 @@
-import { ChatStateProvider } from '@/components/chat/chat-context';
 import { NotificationProvider } from '@/components/notifications/notification-provider';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { PageContextProvider } from '@/contexts/page-context';
 import { ModalProvider } from '@/modals';
 import type { AppStore } from '@/redux';
 import makeStore from '@/redux';
@@ -22,14 +20,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeProvider>
         <ReduxProvider store={storeRef.current}>
           <TooltipProvider delayDuration={200}>
-            <PageContextProvider>
-              <ChatStateProvider>
-                {children}
-                <NotificationProvider />
-                <Toaster />
-                <ModalProvider />
-              </ChatStateProvider>
-            </PageContextProvider>
+            {children}
+            <NotificationProvider />
+            <Toaster />
+            <ModalProvider />
           </TooltipProvider>
         </ReduxProvider>
       </ThemeProvider>

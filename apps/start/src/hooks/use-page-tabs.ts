@@ -2,8 +2,7 @@ import { useLocation } from '@tanstack/react-router';
 
 export function usePageTabs(tabs: { id: string; label: string }[]) {
   const location = useLocation();
-  const segments = location.pathname.split('/').filter(Boolean);
-  const tab = segments[segments.length - 1];
+  const tab = location.pathname.split('/').pop();
 
   if (!tab) {
     return {

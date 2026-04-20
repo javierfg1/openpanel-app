@@ -1,11 +1,11 @@
-import { performance } from 'node:perf_hooks';
-import { setTimeout as sleep } from 'node:timers/promises';
+import type { Queue, WorkerOptions } from 'bullmq';
+import { Worker } from 'bullmq';
+
 import {
-  cronQueue,
   EVENTS_GROUP_QUEUES_SHARDS,
   type EventsQueuePayloadIncomingEvent,
+  cronQueue,
   eventsGroupQueues,
-  gscQueue,
   importQueue,
   insightsQueue,
   miscQueue,
@@ -14,12 +14,13 @@ import {
   sessionsQueue,
 } from '@openpanel/queue';
 import { getRedisQueue } from '@openpanel/redis';
-import type { Queue, WorkerOptions } from 'bullmq';
-import { Worker } from 'bullmq';
+
+import { performance } from 'node:perf_hooks';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { Worker as GroupWorker } from 'groupmq';
+
 import { cronJob } from './jobs/cron';
 import { incomingEvent } from './jobs/events.incoming-event';
-import { gscJob } from './jobs/gsc';
 import { importJob } from './jobs/import';
 import { insightsProjectJob } from './jobs/insights';
 import { miscJob } from './jobs/misc';
@@ -58,7 +59,6 @@ function getEnabledQueues(): QueueName[] {
       'misc',
       'import',
       'insights',
-      'gsc',
     ];
   }
 
@@ -92,7 +92,7 @@ function getConcurrencyFor(queueName: string, defaultValue = 1): number {
   return defaultValue;
 }
 
-export function bootWorkers() {
+export async function bootWorkers() {
   const enabledQueues = getEnabledQueues();
 
   const workers: (Worker | GroupWorker<any>)[] = [];
@@ -116,14 +116,12 @@ export function bootWorkers() {
 
   for (const index of eventQueuesToStart) {
     const queue = eventsGroupQueues[index];
-    if (!queue) {
-      continue;
-    }
+    if (!queue) continue;
 
     const queueName = `events_${index}`;
     const concurrency = getConcurrencyFor(
       queueName,
-      Number.parseInt(process.env.EVENT_JOB_CONCURRENCY || '10', 10)
+      Number.parseInt(process.env.EVENT_JOB_CONCURRENCY || '10', 10),
     );
 
     const worker = new GroupWorker<EventsQueuePayloadIncomingEvent['payload']>({
@@ -131,7 +129,7 @@ export function bootWorkers() {
       concurrency,
       logger: process.env.NODE_ENV === 'production' ? queueLogger : undefined,
       blockingTimeoutSec: Number.parseFloat(
-        process.env.EVENT_BLOCKING_TIMEOUT_SEC || '1'
+        process.env.EVENT_BLOCKING_TIMEOUT_SEC || '1',
       ),
       handler: async (job) => {
         return await incomingEvent(job.data);
@@ -171,7 +169,7 @@ export function bootWorkers() {
     const notificationWorker = new Worker(
       notificationQueue.name,
       notificationJob,
-      { ...workerOptions, concurrency }
+      { ...workerOptions, concurrency },
     );
     workers.push(notificationWorker);
     logger.info('Started worker for notification', { concurrency });
@@ -210,20 +208,9 @@ export function bootWorkers() {
     logger.info('Started worker for insights', { concurrency });
   }
 
-  // Start gsc worker
-  if (enabledQueues.includes('gsc')) {
-    const concurrency = getConcurrencyFor('gsc', 5);
-    const gscWorker = new Worker(gscQueue.name, gscJob, {
-      ...workerOptions,
-      concurrency,
-    });
-    workers.push(gscWorker);
-    logger.info('Started worker for gsc', { concurrency });
-  }
-
   if (workers.length === 0) {
     logger.warn(
-      'No workers started. Check ENABLED_QUEUES environment variable.'
+      'No workers started. Check ENABLED_QUEUES environment variable.',
     );
   }
 
@@ -253,7 +240,7 @@ export function bootWorkers() {
           const elapsed = job.finishedOn - job.processedOn;
           eventsGroupJobDuration.observe(
             { name: worker.name, status: 'failed' },
-            elapsed
+            elapsed,
           );
         }
         logger.error('job failed', {
@@ -266,6 +253,23 @@ export function bootWorkers() {
       }
     });
 
+    (worker as Worker).on('completed', (job) => {
+      if (job) {
+        if (job.processedOn && job.finishedOn) {
+          const elapsed = job.finishedOn - job.processedOn;
+          logger.info('job completed', {
+            jobId: job.id,
+            worker: worker.name,
+            elapsed,
+          });
+          eventsGroupJobDuration.observe(
+            { name: worker.name, status: 'success' },
+            elapsed,
+          );
+        }
+      }
+    });
+
     (worker as Worker).on('ioredis:close', () => {
       logger.error('worker closed due to ioredis:close', {
         worker: worker.name,
@@ -275,7 +279,7 @@ export function bootWorkers() {
 
   async function exitHandler(
     eventName: string,
-    evtOrExitCodeOrError: number | string | Error
+    evtOrExitCodeOrError: number | string | Error,
   ) {
     // Log the actual error details for unhandled rejections/exceptions
     if (evtOrExitCodeOrError instanceof Error) {
@@ -321,7 +325,7 @@ export function bootWorkers() {
       process.on(evt, (code) => {
         exitHandler(evt, code);
       });
-    }
+    },
   );
 
   return workers;

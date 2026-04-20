@@ -2,25 +2,17 @@ import { useOverviewOptions } from '@/components/overview/useOverviewOptions';
 import { TimeWindowPicker } from '@/components/time-window-picker';
 
 export function OverviewRange() {
-  const {
-    range,
-    setRange,
-    setStartDate,
-    setEndDate,
-    endDate,
-    startDate,
-    setInterval,
-  } = useOverviewOptions();
+  const { range, setRange, setStartDate, setEndDate, endDate, startDate } =
+    useOverviewOptions();
 
   return (
     <TimeWindowPicker
-      endDate={endDate}
       onChange={setRange}
-      onEndDateChange={setEndDate}
-      onIntervalChange={setInterval}
-      onStartDateChange={setStartDate}
-      startDate={startDate}
       value={range}
+      onStartDateChange={setStartDate}
+      onEndDateChange={setEndDate}
+      endDate={endDate}
+      startDate={startDate}
     />
   );
 }

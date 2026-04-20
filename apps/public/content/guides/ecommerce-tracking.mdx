@@ -136,7 +136,7 @@ For more accurate tracking, handle revenue in your backend webhook. This ensures
 
 ```tsx
 // Frontend: include deviceId when starting checkout
-const deviceId = op.getDeviceId();
+const deviceId = await op.fetchDeviceId();
 
 const response = await fetch('/api/checkout', {
   method: 'POST',

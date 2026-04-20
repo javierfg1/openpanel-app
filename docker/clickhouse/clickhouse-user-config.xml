@@ -8,7 +8,7 @@
 
     <users>
         <default>
-            <password></password>
+            <password>default</password>
             <networks>
                 <ip>::/0</ip>
             </networks>

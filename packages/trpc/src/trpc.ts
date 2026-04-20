@@ -2,7 +2,7 @@ import { TRPCError, initTRPC } from '@trpc/server';
 import type { CreateFastifyContextOptions } from '@trpc/server/adapters/fastify';
 import { has } from 'ramda';
 import superjson from 'superjson';
-import { ZodError, z } from 'zod';
+import { ZodError } from 'zod';
 
 import { COOKIE_OPTIONS, type SessionValidationResult } from '@openpanel/auth';
 import { runWithAlsSession } from '@openpanel/db';
@@ -37,7 +37,6 @@ export async function createContext({ req, res }: CreateFastifyContextOptions) {
     // @ts-ignore
     res.setCookie(key, value, {
       maxAge: options.maxAge,
-      signed: options.signed,
       ...COOKIE_OPTIONS,
     });
   };
@@ -68,7 +67,7 @@ const t = initTRPC.context<Context>().create({
       data: {
         ...shape.data,
         zodError:
-          error.cause instanceof ZodError ? z.flattenError(error.cause) : null,
+          error.cause instanceof ZodError ? error.cause.flatten() : null,
       },
     };
   },

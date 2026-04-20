@@ -8,6 +8,6 @@
     "tsBuildInfoFile": "node_modules/.cache/tsbuildinfo.json",
     "strictNullChecks": true
   },
-  "include": [".", "../../test"],
+  "include": ["."],
   "exclude": ["node_modules", "dist"]
 }

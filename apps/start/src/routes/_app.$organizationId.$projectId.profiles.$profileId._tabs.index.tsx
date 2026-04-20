@@ -4,7 +4,6 @@ import { MostEvents } from '@/components/profiles/most-events';
 import { PopularRoutes } from '@/components/profiles/popular-routes';
 import { ProfileActivity } from '@/components/profiles/profile-activity';
 import { ProfileCharts } from '@/components/profiles/profile-charts';
-import { ProfileGroups } from '@/components/profiles/profile-groups';
 import { ProfileMetrics } from '@/components/profiles/profile-metrics';
 import { ProfileProperties } from '@/components/profiles/profile-properties';
 import { useTRPC } from '@/integrations/trpc/react';
@@ -104,15 +103,8 @@ function Component() {
           <ProfileMetrics data={metrics.data} />
         </div>
         {/* Profile properties - full width */}
-        <div className="col-span-1 flex flex-col gap-3 md:col-span-2">
+        <div className="col-span-1 md:col-span-2">
           <ProfileProperties profile={profile.data!} />
-          {profile.data?.groups?.length ? (
-            <ProfileGroups
-              profileId={profileId}
-              projectId={projectId}
-              groups={profile.data.groups}
-            />
-          ) : null}
         </div>
 
         {/* Heatmap / Activity */}

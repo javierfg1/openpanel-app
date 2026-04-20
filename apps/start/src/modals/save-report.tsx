@@ -56,7 +56,6 @@ export default function SaveReport({
             projectId,
           }),
         );
-        queryClient.invalidateQueries(trpc.dashboard.list.pathFilter());
 
         const goToReport = () => {
           router.navigate({
@@ -158,7 +157,6 @@ function SelectDashboard({
   projectId: string;
 }) {
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newDashboardName, setNewDashboardName] = useState('');
 
@@ -179,7 +177,6 @@ function SelectDashboard({
     trpc.dashboard.create.mutationOptions({
       onError: handleError,
       async onSuccess(res) {
-        queryClient.invalidateQueries(trpc.dashboard.list.pathFilter());
         await dashboardQuery.refetch();
         onChange(res.id);
         setIsCreatingNew(false);

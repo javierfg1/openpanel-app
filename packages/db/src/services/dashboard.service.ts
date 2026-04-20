@@ -38,14 +38,3 @@ export function getDashboardsByProjectId(projectId: string) {
     },
   });
 }
-
-export async function listDashboardsCore(input: {
-  projectId: string;
-  organizationId: string;
-}) {
-  return db.dashboard.findMany({
-    where: { projectId: input.projectId },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, name: true, projectId: true },
-  });
-}

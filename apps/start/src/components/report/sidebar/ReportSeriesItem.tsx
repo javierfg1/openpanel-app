@@ -101,7 +101,6 @@ export function ReportSeriesItem({
 
           {showSegment && chartEvent.segment.startsWith('property_') && (
             <PropertiesCombobox
-              include={chartEvent.name === 'session_end' ? ['duration'] : []}
               event={chartEvent}
               onSelect={(item) => {
                 dispatch(

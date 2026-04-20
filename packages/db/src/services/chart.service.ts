@@ -1,18 +1,20 @@
-/** biome-ignore-all lint/style/useDefaultSwitchClause: switch cases are exhaustive by design */
-import { stripLeadingAndTrailingSlashes } from '@openpanel/common';
+import sqlstring from 'sqlstring';
+
+import { DateTime, stripLeadingAndTrailingSlashes } from '@openpanel/common';
 import type {
   IChartEventFilter,
-  IGetChartDataInput,
   IReportInput,
+  IChartRange,
+  IGetChartDataInput,
 } from '@openpanel/validation';
-import sqlstring from 'sqlstring';
-import { formatClickhouseDate, TABLE_NAMES } from '../clickhouse/client';
+
+import { TABLE_NAMES, formatClickhouseDate } from '../clickhouse/client';
 import { createSqlBuilder } from '../sql-builder';
 
 export function transformPropertyKey(property: string) {
   const propertyPatterns = ['properties', 'profile.properties'];
   const match = propertyPatterns.find((pattern) =>
-    property.startsWith(`${pattern}.`)
+    property.startsWith(`${pattern}.`),
   );
 
   if (!match) {
@@ -30,91 +32,21 @@ export function transformPropertyKey(property: string) {
   return `${match}['${property.replace(new RegExp(`^${match}.`), '')}']`;
 }
 
-// Returns a SQL expression for a group property via the _g JOIN alias
-// property format: "group.name", "group.type", "group.properties.plan"
-export function getGroupPropertySql(property: string): string {
-  const withoutPrefix = property.replace(/^group\./, '');
-  if (withoutPrefix === 'name') {
-    return '_g.name';
-  }
-  if (withoutPrefix === 'type') {
-    return '_g.type';
-  }
-  if (withoutPrefix.startsWith('properties.')) {
-    const propKey = withoutPrefix.replace(/^properties\./, '');
-    return `_g.properties[${sqlstring.escape(propKey)}]`;
-  }
-  return '_group_id';
-}
-
-// Returns the SELECT expression when querying the groups table directly (no join alias).
-// Use for fetching distinct values for group.* properties.
-export function getGroupPropertySelect(property: string): string {
-  const withoutPrefix = property.replace(/^group\./, '');
-  if (withoutPrefix === 'name') {
-    return 'name';
-  }
-  if (withoutPrefix === 'type') {
-    return 'type';
-  }
-  if (withoutPrefix === 'id') {
-    return 'id';
-  }
-  if (withoutPrefix.startsWith('properties.')) {
-    const propKey = withoutPrefix.replace(/^properties\./, '');
-    return `properties[${sqlstring.escape(propKey)}]`;
-  }
-  return 'id';
-}
-
-// Returns the SELECT expression when querying the profiles table directly (no join alias).
-// Use for fetching distinct values for profile.* properties.
-export function getProfilePropertySelect(property: string): string {
-  const withoutPrefix = property.replace(/^profile\./, '');
-  if (withoutPrefix === 'id') {
-    return 'id';
-  }
-  if (withoutPrefix === 'first_name') {
-    return 'first_name';
-  }
-  if (withoutPrefix === 'last_name') {
-    return 'last_name';
-  }
-  if (withoutPrefix === 'email') {
-    return 'email';
-  }
-  if (withoutPrefix === 'avatar') {
-    return 'avatar';
-  }
-  if (withoutPrefix.startsWith('properties.')) {
-    const propKey = withoutPrefix.replace(/^properties\./, '');
-    return `properties[${sqlstring.escape(propKey)}]`;
-  }
-  return 'id';
-}
-
-export function getSelectPropertyKey(property: string, projectId?: string) {
+export function getSelectPropertyKey(property: string) {
   if (property === 'has_profile') {
     return `if(profile_id != device_id, 'true', 'false')`;
-  }
-
-  // Handle group properties — requires ARRAY JOIN + _g JOIN to be present in query
-  if (property.startsWith('group.') && projectId) {
-    return getGroupPropertySql(property);
   }
 
   const propertyPatterns = ['properties', 'profile.properties'];
 
   const match = propertyPatterns.find((pattern) =>
-    property.startsWith(`${pattern}.`)
+    property.startsWith(`${pattern}.`),
   );
-  if (!match) {
-    return property;
-  }
+  if (!match) return property;
 
   if (property.includes('*')) {
     return `arrayMap(x -> trim(x), mapValues(mapExtractKeyLike(${match}, ${sqlstring.escape(
-      transformPropertyKey(property)
+      transformPropertyKey(property),
     )})))`;
   }
 
@@ -128,7 +60,9 @@ export function getChartSql({
   startDate,
   endDate,
   projectId,
+  limit,
   timezone,
+  chartType,
 }: IGetChartDataInput & { timezone: string }) {
   const {
     sb,
@@ -144,43 +78,22 @@ export function getChartSql({
     with: addCte,
   } = createSqlBuilder();
 
-  sb.where = getEventFiltersWhereClause(event.filters, projectId);
+  sb.where = getEventFiltersWhereClause(event.filters);
   sb.where.projectId = `project_id = ${sqlstring.escape(projectId)}`;
 
   if (event.name !== '*') {
     sb.select.label_0 = `${sqlstring.escape(event.name)} as label_0`;
-    sb.where.eventName = `e.name = ${sqlstring.escape(event.name)}`;
+    sb.where.eventName = `name = ${sqlstring.escape(event.name)}`;
   } else {
     sb.select.label_0 = `'*' as label_0`;
   }
 
   const anyFilterOnProfile = event.filters.some((filter) =>
-    filter.name.startsWith('profile.')
+    filter.name.startsWith('profile.'),
   );
   const anyBreakdownOnProfile = breakdowns.some((breakdown) =>
-    breakdown.name.startsWith('profile.')
+    breakdown.name.startsWith('profile.'),
   );
-  const anyFilterOnGroup = event.filters.some((filter) =>
-    filter.name.startsWith('group.')
-  );
-  const anyBreakdownOnGroup = breakdowns.some((breakdown) =>
-    breakdown.name.startsWith('group.')
-  );
-  const anyMetricOnGroup = !!event.property?.startsWith('group.');
-  const needsGroupArrayJoin =
-    anyFilterOnGroup ||
-    anyBreakdownOnGroup ||
-    anyMetricOnGroup ||
-    event.segment === 'group';
-
-  if (needsGroupArrayJoin) {
-    addCte(
-      '_g',
-      `SELECT id, name, type, properties FROM ${TABLE_NAMES.groups} FINAL WHERE project_id = ${sqlstring.escape(projectId)}`
-    );
-    sb.joins.groups = 'ARRAY JOIN groups AS _group_id';
-    sb.joins.groups_table = 'LEFT ANY JOIN _g ON _g.id = _group_id';
-  }
 
   // Build WHERE clause without the bar filter (for use in subqueries and CTEs)
   // Define this early so we can use it in CTE definitions
@@ -265,8 +178,8 @@ export function getChartSql({
     addCte(
       'profile',
       `SELECT ${selectFields.join(', ')}
-      FROM ${TABLE_NAMES.profiles} FINAL
-      WHERE project_id = ${sqlstring.escape(projectId)}`
+      FROM ${TABLE_NAMES.profiles} FINAL 
+      WHERE project_id = ${sqlstring.escape(projectId)}`,
     );
 
     // Use the CTE reference in the main query
@@ -312,11 +225,31 @@ export function getChartSql({
     sb.where.endDate = `created_at <= toDateTime('${formatClickhouseDate(endDate)}')`;
   }
 
+  // Use CTE to define top breakdown values once, then reference in WHERE clause
+  if (breakdowns.length > 0 && limit) {
+    const breakdownSelects = breakdowns
+      .map((b) => getSelectPropertyKey(b.name))
+      .join(', ');
+
+    // Add top_breakdowns CTE using the builder
+    addCte(
+      'top_breakdowns',
+      `SELECT ${breakdownSelects}
+      FROM ${TABLE_NAMES.events} e
+      ${profilesJoinRef ? `${profilesJoinRef} ` : ''}${getWhereWithoutBar()}
+      GROUP BY ${breakdownSelects}
+      ORDER BY count(*) DESC
+      LIMIT ${limit}`,
+    );
+
+    // Filter main query to only include top breakdown values
+    sb.where.bar = `(${breakdowns.map((b) => getSelectPropertyKey(b.name)).join(',')}) IN (SELECT * FROM top_breakdowns)`;
+  }
+
   breakdowns.forEach((breakdown, index) => {
     // Breakdowns start at label_1 (label_0 is reserved for event name)
     const key = `label_${index + 1}`;
-    sb.select[key] =
-      `${getSelectPropertyKey(breakdown.name, projectId)} as ${key}`;
+    sb.select[key] = `${getSelectPropertyKey(breakdown.name)} as ${key}`;
     sb.groupBy[key] = `${key}`;
   });
 
@@ -326,10 +259,6 @@ export function getChartSql({
 
   if (event.segment === 'session') {
     sb.select.count = 'countDistinct(session_id) as count';
-  }
-
-  if (event.segment === 'group') {
-    sb.select.count = 'countDistinct(_group_id) as count';
   }
 
   if (event.segment === 'user_average') {
@@ -358,9 +287,9 @@ export function getChartSql({
 
   if (event.segment === 'one_event_per_user') {
     sb.from = `(
-      SELECT DISTINCT ON (profile_id) * from ${TABLE_NAMES.events} e ${getJoins()} WHERE ${join(
+      SELECT DISTINCT ON (profile_id) * from ${TABLE_NAMES.events} ${getJoins()} WHERE ${join(
         sb.where,
-        ' AND '
+        ' AND ',
       )}
         ORDER BY profile_id, created_at DESC
       ) as subQuery`;
@@ -374,52 +303,41 @@ export function getChartSql({
   }
 
   // Note: The profile CTE (if it exists) is available in subqueries, so we can reference it directly
-  const subqueryGroupJoins = needsGroupArrayJoin
-    ? 'ARRAY JOIN groups AS _group_id LEFT ANY JOIN _g ON _g.id = _group_id '
-    : '';
-
   if (breakdowns.length > 0) {
-    // Pre-compute unique counts per breakdown group in a CTE, then JOIN it.
-    // We can't use a correlated subquery because:
-    // 1. ClickHouse expands label_X aliases to their underlying expressions,
-    //    which resolve in the subquery's scope, making the condition a tautology.
-    // 2. Correlated subqueries aren't supported on distributed/remote tables.
-    const ucSelectParts: string[] = breakdowns.map((breakdown, index) => {
-      const propertyKey = getSelectPropertyKey(breakdown.name, projectId);
-      return `${propertyKey} as _uc_label_${index + 1}`;
-    });
-    ucSelectParts.push('uniq(profile_id) as total_count');
-
-    const ucGroupByParts = breakdowns.map(
-      (_, index) => `_uc_label_${index + 1}`
-    );
-
-    const ucWhere = getWhereWithoutBar();
-
-    addCte(
-      '_uc',
-      `SELECT ${ucSelectParts.join(', ')} FROM ${TABLE_NAMES.events} e ${subqueryGroupJoins}${profilesJoinRef ? `${profilesJoinRef} ` : ''}${ucWhere} GROUP BY ${ucGroupByParts.join(', ')}`
-    );
-
-    const ucJoinConditions = breakdowns
+    // Match breakdown properties in subquery with outer query's grouped values
+    // Since outer query groups by label_X, we reference those in the correlation
+    const breakdownMatches = breakdowns
       .map((b, index) => {
-        const propertyKey = getSelectPropertyKey(b.name, projectId);
-        return `_uc._uc_label_${index + 1} = ${propertyKey}`;
+        const propertyKey = getSelectPropertyKey(b.name);
+        // Correlate: match the property expression with outer query's label_X value
+        // ClickHouse allows referencing outer query columns in correlated subqueries
+        return `${propertyKey} = label_${index + 1}`;
       })
       .join(' AND ');
 
-    sb.joins.unique_counts = `LEFT ANY JOIN _uc ON ${ucJoinConditions}`;
-    sb.select.total_unique_count = 'any(_uc.total_count) as total_count';
+    // Build WHERE clause for subquery - replace table alias and keep profile CTE reference
+    const subqueryWhere = getWhereWithoutBar()
+      .replace(/\be\./g, 'e2.')
+      .replace(/\bprofile\./g, 'profile.');
+
+    sb.select.total_unique_count = `(
+        SELECT uniq(profile_id)
+        FROM ${TABLE_NAMES.events} e2
+        ${profilesJoinRef ? `${profilesJoinRef} ` : ''}${subqueryWhere}
+        AND ${breakdownMatches}
+      ) as total_count`;
   } else {
-    const ucWhere = getWhereWithoutBar();
+    // No breakdowns: calculate unique count across all data
+    // Build WHERE clause for subquery - replace table alias and keep profile CTE reference
+    const subqueryWhere = getWhereWithoutBar()
+      .replace(/\be\./g, 'e2.')
+      .replace(/\bprofile\./g, 'profile.');
 
-    addCte(
-      '_uc',
-      `SELECT uniq(profile_id) as total_count FROM ${TABLE_NAMES.events} e ${subqueryGroupJoins}${profilesJoinRef ? `${profilesJoinRef} ` : ''}${ucWhere}`
-    );
-
-    sb.select.total_unique_count =
-      '(SELECT total_count FROM _uc) as total_count';
+    sb.select.total_unique_count = `(
+        SELECT uniq(profile_id)
+        FROM ${TABLE_NAMES.events} e2
+        ${profilesJoinRef ? `${profilesJoinRef} ` : ''}${subqueryWhere}
+      ) as total_count`;
   }
 
   const sql = `${getWith()}${getSelect()} ${getFrom()} ${getJoins()} ${getWhere()} ${getGroupBy()} ${getOrderBy()} ${getFill()}`;
@@ -441,43 +359,31 @@ export function getAggregateChartSql({
 }) {
   const { sb, join, getJoins, with: addCte, getSql } = createSqlBuilder();
 
-  sb.where = getEventFiltersWhereClause(event.filters, projectId);
+  sb.where = getEventFiltersWhereClause(event.filters);
   sb.where.projectId = `project_id = ${sqlstring.escape(projectId)}`;
 
   if (event.name !== '*') {
     sb.select.label_0 = `${sqlstring.escape(event.name)} as label_0`;
-    sb.where.eventName = `e.name = ${sqlstring.escape(event.name)}`;
+    sb.where.eventName = `name = ${sqlstring.escape(event.name)}`;
   } else {
     sb.select.label_0 = `'*' as label_0`;
   }
 
   const anyFilterOnProfile = event.filters.some((filter) =>
-    filter.name.startsWith('profile.')
+    filter.name.startsWith('profile.'),
   );
   const anyBreakdownOnProfile = breakdowns.some((breakdown) =>
-    breakdown.name.startsWith('profile.')
+    breakdown.name.startsWith('profile.'),
   );
-  const anyFilterOnGroup = event.filters.some((filter) =>
-    filter.name.startsWith('group.')
-  );
-  const anyBreakdownOnGroup = breakdowns.some((breakdown) =>
-    breakdown.name.startsWith('group.')
-  );
-  const anyMetricOnGroup = !!event.property?.startsWith('group.');
-  const needsGroupArrayJoin =
-    anyFilterOnGroup ||
-    anyBreakdownOnGroup ||
-    anyMetricOnGroup ||
-    event.segment === 'group';
 
-  if (needsGroupArrayJoin) {
-    addCte(
-      '_g',
-      `SELECT id, name, type, properties FROM ${TABLE_NAMES.groups} FINAL WHERE project_id = ${sqlstring.escape(projectId)}`
-    );
-    sb.joins.groups = 'ARRAY JOIN groups AS _group_id';
-    sb.joins.groups_table = 'LEFT ANY JOIN _g ON _g.id = _group_id';
-  }
+  // Build WHERE clause without the bar filter (for use in subqueries and CTEs)
+  const getWhereWithoutBar = () => {
+    const whereWithoutBar = { ...sb.where };
+    delete whereWithoutBar.bar;
+    return Object.keys(whereWithoutBar).length
+      ? `WHERE ${join(whereWithoutBar, ' AND ')}`
+      : '';
+  };
 
   // Collect all profile fields used in filters and breakdowns
   const getProfileFields = () => {
@@ -549,8 +455,8 @@ export function getAggregateChartSql({
     addCte(
       'profile',
       `SELECT ${selectFields.join(', ')}
-      FROM ${TABLE_NAMES.profiles} FINAL
-      WHERE project_id = ${sqlstring.escape(projectId)}`
+      FROM ${TABLE_NAMES.profiles} FINAL 
+      WHERE project_id = ${sqlstring.escape(projectId)}`,
     );
 
     sb.joins.profiles = profilesJoinRef;
@@ -569,12 +475,31 @@ export function getAggregateChartSql({
   // Use startDate as the date value since we're aggregating across the entire range
   sb.select.date = `${sqlstring.escape(startDate)} as date`;
 
+  // Use CTE to define top breakdown values once, then reference in WHERE clause
+  if (breakdowns.length > 0 && limit) {
+    const breakdownSelects = breakdowns
+      .map((b) => getSelectPropertyKey(b.name))
+      .join(', ');
+
+    addCte(
+      'top_breakdowns',
+      `SELECT ${breakdownSelects}
+      FROM ${TABLE_NAMES.events} e
+      ${profilesJoinRef ? `${profilesJoinRef} ` : ''}${getWhereWithoutBar()}
+      GROUP BY ${breakdownSelects}
+      ORDER BY count(*) DESC
+      LIMIT ${limit}`,
+    );
+
+    // Filter main query to only include top breakdown values
+    sb.where.bar = `(${breakdowns.map((b) => getSelectPropertyKey(b.name)).join(',')}) IN (SELECT * FROM top_breakdowns)`;
+  }
+
   // Add breakdowns to SELECT and GROUP BY
   breakdowns.forEach((breakdown, index) => {
     // Breakdowns start at label_1 (label_0 is reserved for event name)
     const key = `label_${index + 1}`;
-    sb.select[key] =
-      `${getSelectPropertyKey(breakdown.name, projectId)} as ${key}`;
+    sb.select[key] = `${getSelectPropertyKey(breakdown.name)} as ${key}`;
     sb.groupBy[key] = `${key}`;
   });
 
@@ -593,10 +518,6 @@ export function getAggregateChartSql({
     sb.select.count = 'countDistinct(session_id) as count';
   }
 
-  if (event.segment === 'group') {
-    sb.select.count = 'countDistinct(_group_id) as count';
-  }
-
   if (event.segment === 'user_average') {
     sb.select.count =
       'COUNT(*)::float / COUNT(DISTINCT profile_id)::float as count';
@@ -610,7 +531,7 @@ export function getAggregateChartSql({
   }[event.segment as string];
 
   if (mathFunction && event.property) {
-    const propertyKey = getSelectPropertyKey(event.property, projectId);
+    const propertyKey = getSelectPropertyKey(event.property);
 
     if (isNumericColumn(event.property)) {
       sb.select.count = `${mathFunction}(${propertyKey}) as count`;
@@ -623,9 +544,9 @@ export function getAggregateChartSql({
 
   if (event.segment === 'one_event_per_user') {
     sb.from = `(
-      SELECT DISTINCT ON (profile_id) * from ${TABLE_NAMES.events} e ${getJoins()} WHERE ${join(
+      SELECT DISTINCT ON (profile_id) * from ${TABLE_NAMES.events} ${getJoins()} WHERE ${join(
         sb.where,
-        ' AND '
+        ' AND ',
       )}
         ORDER BY profile_id, created_at DESC
       ) as subQuery`;
@@ -658,10 +579,7 @@ function isNumericColumn(columnName: string): boolean {
   return numericColumns.includes(columnName);
 }
 
-export function getEventFiltersWhereClause(
-  filters: IChartEventFilter[],
-  projectId?: string
-) {
+export function getEventFiltersWhereClause(filters: IChartEventFilter[]) {
   const where: Record<string, string> = {};
   filters.forEach((filter, index) => {
     const id = `f${index}`;
@@ -684,67 +602,6 @@ export function getEventFiltersWhereClause(
       return;
     }
 
-    // Handle group. prefixed filters (requires ARRAY JOIN + _g JOIN in query)
-    if (name.startsWith('group.') && projectId) {
-      const whereFrom = getGroupPropertySql(name);
-      switch (operator) {
-        case 'is': {
-          if (value.length === 1) {
-            where[id] =
-              `${whereFrom} = ${sqlstring.escape(String(value[0]).trim())}`;
-          } else {
-            where[id] =
-              `${whereFrom} IN (${value.map((val) => sqlstring.escape(String(val).trim())).join(', ')})`;
-          }
-          break;
-        }
-        case 'isNot': {
-          if (value.length === 1) {
-            where[id] =
-              `${whereFrom} != ${sqlstring.escape(String(value[0]).trim())}`;
-          } else {
-            where[id] =
-              `${whereFrom} NOT IN (${value.map((val) => sqlstring.escape(String(val).trim())).join(', ')})`;
-          }
-          break;
-        }
-        case 'contains': {
-          where[id] =
-            `(${value.map((val) => `${whereFrom} LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`).join(' OR ')})`;
-          break;
-        }
-        case 'doesNotContain': {
-          where[id] =
-            `(${value.map((val) => `${whereFrom} NOT LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`).join(' OR ')})`;
-          break;
-        }
-        case 'startsWith': {
-          where[id] =
-            `(${value.map((val) => `${whereFrom} LIKE ${sqlstring.escape(`${String(val).trim()}%`)}`).join(' OR ')})`;
-          break;
-        }
-        case 'endsWith': {
-          where[id] =
-            `(${value.map((val) => `${whereFrom} LIKE ${sqlstring.escape(`%${String(val).trim()}`)}`).join(' OR ')})`;
-          break;
-        }
-        case 'isNull': {
-          where[id] = `(${whereFrom} = '' OR ${whereFrom} IS NULL)`;
-          break;
-        }
-        case 'isNotNull': {
-          where[id] = `(${whereFrom} != '' AND ${whereFrom} IS NOT NULL)`;
-          break;
-        }
-        case 'regex': {
-          where[id] =
-            `(${value.map((val) => `match(${whereFrom}, ${sqlstring.escape(String(val).trim())})`).join(' OR ')})`;
-          break;
-        }
-      }
-      return;
-    }
-
     if (
       name.startsWith('properties.') ||
       name.startsWith('profile.properties.')
@@ -759,13 +616,15 @@ export function getEventFiltersWhereClause(
             where[id] = `arrayExists(x -> ${value
               .map((val) => `x = ${sqlstring.escape(String(val).trim())}`)
               .join(' OR ')}, ${whereFrom})`;
-          } else if (value.length === 1) {
-            where[id] =
-              `${whereFrom} = ${sqlstring.escape(String(value[0]).trim())}`;
           } else {
-            where[id] = `${whereFrom} IN (${value
-              .map((val) => sqlstring.escape(String(val).trim()))
-              .join(', ')})`;
+            if (value.length === 1) {
+              where[id] =
+                `${whereFrom} = ${sqlstring.escape(String(value[0]).trim())}`;
+            } else {
+              where[id] = `${whereFrom} IN (${value
+                .map((val) => sqlstring.escape(String(val).trim()))
+                .join(', ')})`;
+            }
           }
           break;
         }
@@ -774,13 +633,15 @@ export function getEventFiltersWhereClause(
             where[id] = `arrayExists(x -> ${value
               .map((val) => `x != ${sqlstring.escape(String(val).trim())}`)
               .join(' OR ')}, ${whereFrom})`;
-          } else if (value.length === 1) {
-            where[id] =
-              `${whereFrom} != ${sqlstring.escape(String(value[0]).trim())}`;
           } else {
-            where[id] = `${whereFrom} NOT IN (${value
-              .map((val) => sqlstring.escape(String(val).trim()))
-              .join(', ')})`;
+            if (value.length === 1) {
+              where[id] =
+                `${whereFrom} != ${sqlstring.escape(String(value[0]).trim())}`;
+            } else {
+              where[id] = `${whereFrom} NOT IN (${value
+                .map((val) => sqlstring.escape(String(val).trim()))
+                .join(', ')})`;
+            }
           }
           break;
         }
@@ -788,14 +649,15 @@ export function getEventFiltersWhereClause(
           if (isWildcard) {
             where[id] = `arrayExists(x -> ${value
               .map(
-                (val) => `x LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`
+                (val) =>
+                  `x LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `${whereFrom} LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`
+                  `${whereFrom} LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`,
               )
               .join(' OR ')})`;
           }
@@ -806,14 +668,14 @@ export function getEventFiltersWhereClause(
             where[id] = `arrayExists(x -> ${value
               .map(
                 (val) =>
-                  `x NOT LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`
+                  `x NOT LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `${whereFrom} NOT LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`
+                  `${whereFrom} NOT LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`,
               )
               .join(' OR ')})`;
           }
@@ -823,14 +685,14 @@ export function getEventFiltersWhereClause(
           if (isWildcard) {
             where[id] = `arrayExists(x -> ${value
               .map(
-                (val) => `x LIKE ${sqlstring.escape(`${String(val).trim()}%`)}`
+                (val) => `x LIKE ${sqlstring.escape(`${String(val).trim()}%`)}`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `${whereFrom} LIKE ${sqlstring.escape(`${String(val).trim()}%`)}`
+                  `${whereFrom} LIKE ${sqlstring.escape(`${String(val).trim()}%`)}`,
               )
               .join(' OR ')})`;
           }
@@ -840,14 +702,14 @@ export function getEventFiltersWhereClause(
           if (isWildcard) {
             where[id] = `arrayExists(x -> ${value
               .map(
-                (val) => `x LIKE ${sqlstring.escape(`%${String(val).trim()}`)}`
+                (val) => `x LIKE ${sqlstring.escape(`%${String(val).trim()}`)}`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `${whereFrom} LIKE ${sqlstring.escape(`%${String(val).trim()}`)}`
+                  `${whereFrom} LIKE ${sqlstring.escape(`%${String(val).trim()}`)}`,
               )
               .join(' OR ')})`;
           }
@@ -862,7 +724,7 @@ export function getEventFiltersWhereClause(
             where[id] = `(${value
               .map(
                 (val) =>
-                  `match(${whereFrom}, ${sqlstring.escape(String(val).trim())})`
+                  `match(${whereFrom}, ${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           }
@@ -890,14 +752,14 @@ export function getEventFiltersWhereClause(
             where[id] = `arrayExists(x -> ${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(x) > toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(x) > toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(${whereFrom}) > toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(${whereFrom}) > toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           }
@@ -908,14 +770,14 @@ export function getEventFiltersWhereClause(
             where[id] = `arrayExists(x -> ${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(x) < toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(x) < toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(${whereFrom}) < toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(${whereFrom}) < toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           }
@@ -926,14 +788,14 @@ export function getEventFiltersWhereClause(
             where[id] = `arrayExists(x -> ${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(x) >= toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(x) >= toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(${whereFrom}) >= toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(${whereFrom}) >= toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           }
@@ -944,14 +806,14 @@ export function getEventFiltersWhereClause(
             where[id] = `arrayExists(x -> ${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(x) <= toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(x) <= toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')}, ${whereFrom})`;
           } else {
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64OrZero(${whereFrom}) <= toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64OrZero(${whereFrom}) <= toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           }
@@ -994,7 +856,7 @@ export function getEventFiltersWhereClause(
           where[id] = `(${value
             .map(
               (val) =>
-                `${name} LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`
+                `${name} LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`,
             )
             .join(' OR ')})`;
           break;
@@ -1003,7 +865,7 @@ export function getEventFiltersWhereClause(
           where[id] = `(${value
             .map(
               (val) =>
-                `${name} NOT LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`
+                `${name} NOT LIKE ${sqlstring.escape(`%${String(val).trim()}%`)}`,
             )
             .join(' OR ')})`;
           break;
@@ -1012,7 +874,7 @@ export function getEventFiltersWhereClause(
           where[id] = `(${value
             .map(
               (val) =>
-                `${name} LIKE ${sqlstring.escape(`${String(val).trim()}%`)}`
+                `${name} LIKE ${sqlstring.escape(`${String(val).trim()}%`)}`,
             )
             .join(' OR ')})`;
           break;
@@ -1021,7 +883,7 @@ export function getEventFiltersWhereClause(
           where[id] = `(${value
             .map(
               (val) =>
-                `${name} LIKE ${sqlstring.escape(`%${String(val).trim()}`)}`
+                `${name} LIKE ${sqlstring.escape(`%${String(val).trim()}`)}`,
             )
             .join(' OR ')})`;
           break;
@@ -1030,7 +892,7 @@ export function getEventFiltersWhereClause(
           where[id] = `(${value
             .map(
               (val) =>
-                `match(${name}, ${sqlstring.escape(stripLeadingAndTrailingSlashes(String(val)).trim())})`
+                `match(${name}, ${sqlstring.escape(stripLeadingAndTrailingSlashes(String(val)).trim())})`,
             )
             .join(' OR ')})`;
           break;
@@ -1040,7 +902,7 @@ export function getEventFiltersWhereClause(
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64(${name}) > toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64(${name}) > toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           } else {
@@ -1055,7 +917,7 @@ export function getEventFiltersWhereClause(
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64(${name}) < toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64(${name}) < toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           } else {
@@ -1070,13 +932,13 @@ export function getEventFiltersWhereClause(
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64(${name}) >= toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64(${name}) >= toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           } else {
             where[id] = `(${value
               .map(
-                (val) => `${name} >= ${sqlstring.escape(String(val).trim())}`
+                (val) => `${name} >= ${sqlstring.escape(String(val).trim())}`,
               )
               .join(' OR ')})`;
           }
@@ -1087,13 +949,13 @@ export function getEventFiltersWhereClause(
             where[id] = `(${value
               .map(
                 (val) =>
-                  `toFloat64(${name}) <= toFloat64(${sqlstring.escape(String(val).trim())})`
+                  `toFloat64(${name}) <= toFloat64(${sqlstring.escape(String(val).trim())})`,
               )
               .join(' OR ')})`;
           } else {
             where[id] = `(${value
               .map(
-                (val) => `${name} <= ${sqlstring.escape(String(val).trim())}`
+                (val) => `${name} <= ${sqlstring.escape(String(val).trim())}`,
               )
               .join(' OR ')})`;
           }
@@ -1104,4 +966,240 @@ export function getEventFiltersWhereClause(
   });
 
   return where;
+}
+
+export function getChartStartEndDate(
+  {
+    startDate,
+    endDate,
+    range,
+  }: Pick<IReportInput, 'endDate' | 'startDate' | 'range'>,
+  timezone: string,
+) {
+  if (startDate && endDate) {
+    return { startDate: startDate, endDate: endDate };
+  }
+
+  const ranges = getDatesFromRange(range, timezone);
+  if (!startDate && endDate) {
+    return { startDate: ranges.startDate, endDate: endDate };
+  }
+
+  return ranges;
+}
+
+export function getDatesFromRange(range: IChartRange, timezone: string) {
+  if (range === '30min' || range === 'lastHour') {
+    const minutes = range === '30min' ? 30 : 60;
+    const startDate = DateTime.now()
+      .minus({ minute: minutes })
+      .startOf('minute')
+      .setZone(timezone)
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .setZone(timezone)
+      .endOf('minute')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === 'today') {
+    const startDate = DateTime.now()
+      .setZone(timezone)
+      .startOf('day')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .setZone(timezone)
+      .endOf('day')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === 'yesterday') {
+    const startDate = DateTime.now()
+      .minus({ day: 1 })
+      .setZone(timezone)
+      .startOf('day')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .minus({ day: 1 })
+      .setZone(timezone)
+      .endOf('day')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === '7d') {
+    const startDate = DateTime.now()
+      .minus({ day: 7 })
+      .setZone(timezone)
+      .startOf('day')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .setZone(timezone)
+      .endOf('day')
+      .plus({ millisecond: 1 })
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === '6m') {
+    const startDate = DateTime.now()
+      .minus({ month: 6 })
+      .setZone(timezone)
+      .startOf('day')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .setZone(timezone)
+      .endOf('day')
+      .plus({ millisecond: 1 })
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === '12m') {
+    const startDate = DateTime.now()
+      .minus({ month: 12 })
+      .setZone(timezone)
+      .startOf('month')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .setZone(timezone)
+      .endOf('month')
+      .plus({ millisecond: 1 })
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === 'monthToDate') {
+    const startDate = DateTime.now()
+      .setZone(timezone)
+      .startOf('month')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .setZone(timezone)
+      .endOf('day')
+      .plus({ millisecond: 1 })
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === 'lastMonth') {
+    const month = DateTime.now()
+      .minus({ month: 1 })
+      .setZone(timezone)
+      .startOf('month');
+
+    const startDate = month.toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = month
+      .endOf('month')
+      .plus({ millisecond: 1 })
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === 'yearToDate') {
+    const startDate = DateTime.now()
+      .setZone(timezone)
+      .startOf('year')
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = DateTime.now()
+      .setZone(timezone)
+      .endOf('day')
+      .plus({ millisecond: 1 })
+      .toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  if (range === 'lastYear') {
+    const year = DateTime.now().minus({ year: 1 }).setZone(timezone);
+    const startDate = year.startOf('year').toFormat('yyyy-MM-dd HH:mm:ss');
+    const endDate = year.endOf('year').toFormat('yyyy-MM-dd HH:mm:ss');
+
+    return {
+      startDate: startDate,
+      endDate: endDate,
+    };
+  }
+
+  // range === '30d'
+  const startDate = DateTime.now()
+    .minus({ day: 30 })
+    .setZone(timezone)
+    .startOf('day')
+    .toFormat('yyyy-MM-dd HH:mm:ss');
+  const endDate = DateTime.now()
+    .setZone(timezone)
+    .endOf('day')
+    .plus({ millisecond: 1 })
+    .toFormat('yyyy-MM-dd HH:mm:ss');
+
+  return {
+    startDate: startDate,
+    endDate: endDate,
+  };
+}
+
+export function getChartPrevStartEndDate({
+  startDate,
+  endDate,
+}: {
+  startDate: string;
+  endDate: string;
+}) {
+  let diff = DateTime.fromFormat(endDate, 'yyyy-MM-dd HH:mm:ss').diff(
+    DateTime.fromFormat(startDate, 'yyyy-MM-dd HH:mm:ss'),
+  );
+
+  // this will make sure our start and end date's are correct
+  // otherwise if a day ends with 23:59:59.999 and starts with 00:00:00.000
+  // the diff will be 23:59:59.999 and that will make the start date wrong
+  // so we add 1 millisecond to the diff
+  if ((diff.milliseconds / 1000) % 2 !== 0) {
+    diff = diff.plus({ millisecond: 1 });
+  }
+
+  return {
+    startDate: DateTime.fromFormat(startDate, 'yyyy-MM-dd HH:mm:ss')
+      .minus({ millisecond: diff.milliseconds })
+      .toFormat('yyyy-MM-dd HH:mm:ss'),
+    endDate: DateTime.fromFormat(endDate, 'yyyy-MM-dd HH:mm:ss')
+      .minus({ millisecond: diff.milliseconds })
+      .toFormat('yyyy-MM-dd HH:mm:ss'),
+  };
 }

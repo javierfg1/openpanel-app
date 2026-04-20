@@ -43,9 +43,9 @@ export function DataPrivacy() {
       />
       <div className="mt-16 mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
         <FeatureCard
-          description="GDPR compliant and privacy-friendly analytics without cookies or invasive tracking. Data is EU hosted, and a Data Processing Agreement (DPA) is available to sign."
+          description="Privacy-first analytics without cookies, fingerprinting, or invasive tracking. Built for compliance and user trust."
           illustration={<PrivacyIllustration />}
-          title="GDPR compliant"
+          title="Privacy-first"
           variant="large"
         />
         <FeatureCard

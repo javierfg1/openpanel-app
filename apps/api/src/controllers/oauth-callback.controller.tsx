@@ -1,17 +1,16 @@
+import { LogError } from '@/utils/errors';
 import {
   Arctic,
+  type OAuth2Tokens,
   createSession,
   generateSessionToken,
   github,
   google,
-  type OAuth2Tokens,
-  setLastAuthProviderCookie,
   setSessionTokenCookie,
 } from '@openpanel/auth';
 import { type Account, connectUserToOrganization, db } from '@openpanel/db';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { LogError } from '@/utils/errors';
 
 async function getGithubEmail(githubAccessToken: string) {
   const emailListRequest = new Request('https://api.github.com/user/emails');
@@ -75,14 +74,10 @@ async function handleExistingUser({
   setSessionTokenCookie(
     (...args) => reply.setCookie(...args),
     sessionToken,
-    session.expiresAt
-  );
-  setLastAuthProviderCookie(
-    (...args) => reply.setCookie(...args),
-    providerName
+    session.expiresAt,
   );
   return reply.redirect(
-    process.env.DASHBOARD_URL || process.env.NEXT_PUBLIC_DASHBOARD_URL!
+    process.env.DASHBOARD_URL || process.env.NEXT_PUBLIC_DASHBOARD_URL!,
   );
 }
 
@@ -108,7 +103,7 @@ async function handleNewUser({
         existingUser,
         oauthUser,
         providerName,
-      }
+      },
     );
   }
 
@@ -143,14 +138,10 @@ async function handleNewUser({
   setSessionTokenCookie(
     (...args) => reply.setCookie(...args),
     sessionToken,
-    session.expiresAt
-  );
-  setLastAuthProviderCookie(
-    (...args) => reply.setCookie(...args),
-    providerName
+    session.expiresAt,
   );
   return reply.redirect(
-    process.env.DASHBOARD_URL || process.env.NEXT_PUBLIC_DASHBOARD_URL!
+    process.env.DASHBOARD_URL || process.env.NEXT_PUBLIC_DASHBOARD_URL!,
   );
 }
 
@@ -228,7 +219,7 @@ interface ValidatedOAuthQuery {
 
 async function validateOAuthCallback(
   req: FastifyRequest,
-  provider: Provider
+  provider: Provider,
 ): Promise<ValidatedOAuthQuery> {
   const schema = z.object({
     code: z.string(),
@@ -362,7 +353,7 @@ export async function googleCallback(req: FastifyRequest, reply: FastifyReply) {
 
 function redirectWithError(reply: FastifyReply, error: LogError | unknown) {
   const url = new URL(
-    process.env.DASHBOARD_URL || process.env.NEXT_PUBLIC_DASHBOARD_URL!
+    process.env.DASHBOARD_URL || process.env.NEXT_PUBLIC_DASHBOARD_URL!,
   );
   url.pathname = '/login';
   if (error instanceof LogError) {

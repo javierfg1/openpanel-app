@@ -1,15 +1,3 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import type React from 'react';
-import {
-  Bar,
-  BarChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { z } from 'zod';
 import { AnimatedNumber } from '@/components/animated-number';
 import {
   ChartTooltipContainer,
@@ -26,6 +14,18 @@ import { countries } from '@/translations/countries';
 import type { RouterOutputs } from '@/trpc/client';
 import { cn } from '@/utils/cn';
 import { getChartColor } from '@/utils/theme';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { createFileRoute } from '@tanstack/react-router';
+import type React from 'react';
+import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { z } from 'zod';
 
 const widgetSearchSchema = z.object({
   shareId: z.string(),
@@ -44,7 +44,7 @@ function RouteComponent() {
 
   // Fetch widget data
   const { data: widgetData, isLoading } = useQuery(
-    trpc.widget.realtimeData.queryOptions({ shareId })
+    trpc.widget.realtimeData.queryOptions({ shareId }),
   );
 
   if (isLoading) {
@@ -53,10 +53,10 @@ function RouteComponent() {
 
   if (!widgetData) {
     return (
-      <div className="center-center col flex h-screen w-full bg-background p-4 text-foreground">
-        <LogoSquare className="mb-4 size-10" />
-        <h1 className="font-semibold text-xl">Widget not found</h1>
-        <p className="mt-2 text-muted-foreground text-sm">
+      <div className="flex h-screen w-full center-center bg-background text-foreground col p-4">
+        <LogoSquare className="size-10 mb-4" />
+        <h1 className="text-xl font-semibold">Widget not found</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           This widget is not available or has been removed.
         </p>
       </div>
@@ -65,10 +65,10 @@ function RouteComponent() {
 
   return (
     <RealtimeWidget
-      color={color}
-      data={widgetData}
-      limit={limit}
       shareId={shareId}
+      limit={limit}
+      data={widgetData}
+      color={color}
     />
   );
 }
@@ -83,6 +83,7 @@ interface RealtimeWidgetProps {
 function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const number = useNumber();
 
   // WebSocket subscription for real-time updates
   useWS<number>(
@@ -90,16 +91,16 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
     () => {
       if (!document.hidden) {
         queryClient.refetchQueries(
-          trpc.widget.realtimeData.queryFilter({ shareId })
+          trpc.widget.realtimeData.queryFilter({ shareId }),
         );
       }
     },
     {
       debounce: {
         delay: 1000,
-        maxWait: 60_000,
+        maxWait: 60000,
       },
-    }
+    },
   );
 
   const maxDomain =
@@ -110,12 +111,8 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
     const referrers = data.referrers.length > 0 ? 1 : 0;
     const paths = data.paths.length > 0 ? 1 : 0;
     const value = countries + referrers + paths;
-    if (value === 3) {
-      return 'md:grid-cols-3';
-    }
-    if (value === 2) {
-      return 'md:grid-cols-2';
-    }
+    if (value === 3) return 'md:grid-cols-3';
+    if (value === 2) return 'md:grid-cols-2';
     return 'md:grid-cols-1';
   })();
 
@@ -123,10 +120,10 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
     <div className="flex h-screen w-full flex-col bg-background text-foreground">
       {/* Header with live counter */}
       <div className="p-6 pb-3">
-        <div className="flex h-4 w-full items-center justify-between">
-          <div className="flex w-full items-center gap-3">
+        <div className="flex items-center justify-between w-full h-4">
+          <div className="flex items-center gap-3 w-full">
             <Ping />
-            <div className="flex-1 font-medium text-muted-foreground text-sm">
+            <div className="text-sm font-medium text-muted-foreground flex-1">
               USERS IN LAST 30 MINUTES
             </div>
             {data.project.domain && <SerieIcon name={data.project.domain} />}
@@ -134,14 +131,14 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
         </div>
 
         <div className="row">
-          <div className="h-18 font-bold font-mono text-6xl text-foreground">
+          <div className="font-mono text-6xl font-bold h-18 text-foreground">
             <AnimatedNumber value={data.liveCount} />
           </div>
         </div>
 
-        <div className="-mt-4 flex h-20 w-full flex-col">
+        <div className="flex h-20 w-full flex-col -mt-4">
           <div className="flex-1">
-            <ResponsiveContainer height="100%" width="100%">
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={data.histogram}
                 margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
@@ -151,22 +148,22 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
                   cursor={{ fill: 'var(--def-100)', radius: 4 }}
                 />
                 <XAxis
-                  axisLine={false}
                   dataKey="time"
-                  interval="preserveStartEnd"
-                  tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+                  axisLine={false}
                   tickLine={false}
+                  tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
                   ticks={[
                     data.histogram[0].time,
                     data.histogram[data.histogram.length - 1].time,
                   ]}
+                  interval="preserveStartEnd"
                 />
-                <YAxis domain={[0, maxDomain]} hide />
+                <YAxis hide domain={[0, maxDomain]} />
                 <Bar
                   dataKey="sessionCount"
-                  fill={color || 'var(--chart-0)'}
                   isAnimationActive={false}
                   radius={[4, 4, 4, 4]}
+                  fill={color || 'var(--chart-0)'}
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -177,24 +174,24 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
       {(data.countries.length > 0 ||
         data.referrers.length > 0 ||
         data.paths.length > 0) && (
-        <div className="hide-scrollbar flex flex-1 flex-col gap-6 overflow-auto border-t p-6">
+        <div className="flex flex-1 flex-col gap-6 overflow-auto p-6 hide-scrollbar border-t">
           <div className={cn('grid grid-cols-1 gap-6', grids)}>
             {/* Countries */}
             {data.countries.length > 0 && (
               <div className="flex flex-col">
-                <div className="mb-3 font-medium text-muted-foreground text-xs">
+                <div className="mb-3 text-xs font-medium text-muted-foreground">
                   COUNTRY
                 </div>
                 <div className="col">
                   {(() => {
                     const { visible, rest, restCount } = getRestItems(
                       data.countries,
-                      limit
+                      limit,
                     );
                     return (
                       <>
                         {visible.map((item) => (
-                          <RowItem count={item.count} key={item.country}>
+                          <RowItem key={item.country} count={item.count}>
                             <div className="flex items-center gap-2">
                               <SerieIcon name={item.country} />
                               <span className="text-sm">
@@ -227,19 +224,19 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
             {/* Referrers */}
             {data.referrers.length > 0 && (
               <div className="flex flex-col">
-                <div className="mb-3 font-medium text-muted-foreground text-xs">
+                <div className="mb-3 text-xs font-medium text-muted-foreground">
                   REFERRER
                 </div>
                 <div className="col">
                   {(() => {
                     const { visible, rest, restCount } = getRestItems(
                       data.referrers,
-                      limit
+                      limit,
                     );
                     return (
                       <>
                         {visible.map((item) => (
-                          <RowItem count={item.count} key={item.referrer}>
+                          <RowItem key={item.referrer} count={item.count}>
                             <div className="flex items-center gap-2">
                               <SerieIcon name={item.referrer} />
                               <span className="truncate text-sm">
@@ -266,19 +263,19 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
             {/* Paths */}
             {data.paths.length > 0 && (
               <div className="flex flex-col">
-                <div className="mb-3 font-medium text-muted-foreground text-xs">
+                <div className="mb-3 text-xs font-medium text-muted-foreground">
                   PATH
                 </div>
                 <div className="col">
                   {(() => {
                     const { visible, rest, restCount } = getRestItems(
                       data.paths,
-                      limit
+                      limit,
                     );
                     return (
                       <>
                         {visible.map((item) => (
-                          <RowItem count={item.count} key={item.path}>
+                          <RowItem key={item.path} count={item.count}>
                             <span className="truncate text-sm">
                               {item.path}
                             </span>
@@ -306,10 +303,10 @@ function RealtimeWidget({ shareId, data, limit, color }: RealtimeWidgetProps) {
 }
 
 // Custom tooltip component that uses portals to escape overflow hidden
-const CustomTooltip = ({ active, payload }: any) => {
+const CustomTooltip = ({ active, payload, coordinate }: any) => {
   const number = useNumber();
 
-  if (!(active && payload && payload.length)) {
+  if (!active || !payload || !payload.length) {
     return null;
   }
 
@@ -331,13 +328,10 @@ const CustomTooltip = ({ active, payload }: any) => {
 function RowItem({
   children,
   count,
-}: {
-  children: React.ReactNode;
-  count: number;
-}) {
+}: { children: React.ReactNode; count: number }) {
   const number = useNumber();
   return (
-    <div className="-mx-3 flex h-10 items-center justify-between border-b px-3 py-2 text-sm hover:bg-foreground/5">
+    <div className="h-10 text-sm flex items-center justify-between px-3 py-2 border-b hover:bg-foreground/5 -mx-3">
       {children}
       <span className="font-semibold">{number.short(count)}</span>
     </div>
@@ -346,7 +340,7 @@ function RowItem({
 
 function getRestItems<T extends { count: number }>(
   items: T[],
-  limit: number
+  limit: number,
 ): { visible: T[]; rest: T[]; restCount: number } {
   const visible = items.slice(0, limit);
   const rest = items.slice(limit);
@@ -381,7 +375,7 @@ function RestRow({
           : 'paths';
 
   return (
-    <div className="-mx-3 flex h-10 items-center justify-between border-b px-3 py-2 text-sm hover:bg-foreground/5">
+    <div className="h-10 text-sm flex items-center justify-between px-3 py-2 border-b hover:bg-foreground/5 -mx-3">
       <span className="truncate">
         {firstName} and {otherCount} more {typeLabel}...
       </span>
@@ -440,13 +434,13 @@ function RealtimeWidgetSkeleton({ limit }: { limit: number }) {
   const itemCount = Math.min(limit, 5);
 
   return (
-    <div className="flex h-screen w-full animate-pulse flex-col bg-background text-foreground">
+    <div className="flex h-screen w-full flex-col bg-background text-foreground animate-pulse">
       {/* Header with live counter */}
       <div className="border-b p-6 pb-3">
-        <div className="flex h-4 w-full items-center justify-between">
-          <div className="flex w-full items-center gap-3">
+        <div className="flex items-center justify-between w-full h-4">
+          <div className="flex items-center gap-3 w-full">
             <div className="size-2 rounded-full bg-muted" />
-            <div className="flex-1 font-medium text-muted-foreground text-sm">
+            <div className="text-sm font-medium text-muted-foreground flex-1">
               USERS IN LAST 30 MINUTES
             </div>
           </div>
@@ -454,35 +448,35 @@ function RealtimeWidgetSkeleton({ limit }: { limit: number }) {
         </div>
 
         <div className="row">
-          <div className="row flex h-18 items-center gap-1 py-4 font-bold font-mono text-6xl">
-            <div className="h-full w-6 rounded bg-muted" />
-            <div className="h-full w-6 rounded bg-muted" />
+          <div className="font-mono text-6xl font-bold h-18 flex items-center py-4 gap-1 row">
+            <div className="h-full w-6 bg-muted rounded" />
+            <div className="h-full w-6 bg-muted rounded" />
           </div>
         </div>
 
-        <div className="-mt-4 flex h-20 w-full flex-col pb-2.5">
-          <div className="row h-full flex-1 gap-1">
+        <div className="flex h-20 w-full flex-col -mt-4 pb-2.5">
+          <div className="flex-1 row gap-1 h-full">
             {SKELETON_HISTOGRAM.map((item, index) => (
               <div
-                className="mt-auto h-full w-full rounded bg-muted"
                 key={index.toString()}
                 style={{ height: `${item}%` }}
+                className="h-full w-full bg-muted rounded mt-auto"
               />
             ))}
           </div>
           <div className="row justify-between pt-2">
-            <div className="h-3 w-8 rounded bg-muted" />
-            <div className="h-3 w-8 rounded bg-muted" />
+            <div className="h-3 w-8 bg-muted rounded" />
+            <div className="h-3 w-8 bg-muted rounded" />
           </div>
         </div>
       </div>
 
-      <div className="hide-scrollbar flex flex-1 flex-col gap-6 overflow-auto p-6">
+      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6 hide-scrollbar">
         {/* Countries, Referrers, and Paths skeleton */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {/* Countries skeleton */}
           <div className="flex flex-col">
-            <div className="mb-3 font-medium text-muted-foreground text-xs">
+            <div className="mb-3 text-xs font-medium text-muted-foreground">
               COUNTRY
             </div>
             <div className="col">
@@ -494,7 +488,7 @@ function RealtimeWidgetSkeleton({ limit }: { limit: number }) {
 
           {/* Referrers skeleton */}
           <div className="flex flex-col">
-            <div className="mb-3 font-medium text-muted-foreground text-xs">
+            <div className="mb-3 text-xs font-medium text-muted-foreground">
               REFERRER
             </div>
             <div className="col">
@@ -506,7 +500,7 @@ function RealtimeWidgetSkeleton({ limit }: { limit: number }) {
 
           {/* Paths skeleton */}
           <div className="flex flex-col">
-            <div className="mb-3 font-medium text-muted-foreground text-xs">
+            <div className="mb-3 text-xs font-medium text-muted-foreground">
               PATH
             </div>
             <div className="col">
@@ -523,12 +517,12 @@ function RealtimeWidgetSkeleton({ limit }: { limit: number }) {
 
 function RowItemSkeleton() {
   return (
-    <div className="-mx-3 flex h-10 items-center justify-between border-b px-3 py-2 text-sm">
+    <div className="h-10 text-sm flex items-center justify-between px-3 py-2 border-b -mx-3">
       <div className="flex items-center gap-2">
         <div className="size-5 rounded bg-muted" />
-        <div className="h-4 w-24 rounded bg-muted" />
+        <div className="h-4 w-24 bg-muted rounded" />
       </div>
-      <div className="h-4 w-8 rounded bg-muted" />
+      <div className="h-4 w-8 bg-muted rounded" />
     </div>
   );
 }

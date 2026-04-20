@@ -33,7 +33,7 @@ async function generateNewSalt() {
     return created;
   });
 
-  await getSalts.clear();
+  getSalts.clear();
 
   return newSalt;
 }

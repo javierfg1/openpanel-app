@@ -1,15 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, redirect } from '@tanstack/react-router';
-import { MailIcon } from 'lucide-react';
-import { z } from 'zod';
 import { Or } from '@/components/auth/or';
 import { SignInGithub } from '@/components/auth/sign-in-github';
 import { SignInGoogle } from '@/components/auth/sign-in-google';
 import { SignUpEmailForm } from '@/components/auth/sign-up-email-form';
 import FullPageLoadingState from '@/components/full-page-loading-state';
+import { LogoSquare } from '@/components/logo';
 import { useTRPC } from '@/integrations/trpc/react';
-import { createEntityTitle, PAGE_TITLES } from '@/utils/title';
-
+import { PAGE_TITLES, createEntityTitle } from '@/utils/title';
+import { useQuery } from '@tanstack/react-query';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { motion } from 'framer-motion';
+import { MailIcon } from 'lucide-react';
+import { z } from 'zod';
 const validateSearch = z.object({
   inviteId: z.string().optional(),
 });
@@ -21,7 +22,7 @@ export const Route = createFileRoute('/_public/onboarding')({
     ],
   }),
   beforeLoad: async ({ context }) => {
-    if (context.session?.session) {
+    if (context.session.session) {
       throw redirect({ to: '/' });
     }
   },
@@ -33,7 +34,7 @@ export const Route = createFileRoute('/_public/onboarding')({
       await context.queryClient.prefetchQuery(
         context.trpc.organization.getInvite.queryOptions({
           inviteId: search.data.inviteId,
-        })
+        }),
       );
     }
   },
@@ -46,36 +47,36 @@ function Component() {
   const { data: invite } = useQuery(
     trpc.organization.getInvite.queryOptions(
       {
-        inviteId,
+        inviteId: inviteId,
       },
       {
         enabled: !!inviteId,
-      }
-    )
+      },
+    ),
   );
   return (
-    <div className="col w-full gap-8 text-left">
+    <div className="col gap-8 w-full text-left">
       <div>
-        <h1 className="mb-2 font-bold text-3xl text-foreground">
-          Start tracking in minutes
+        <h1 className="text-3xl font-bold text-foreground mb-2">
+          Create an account
         </h1>
         <p className="text-muted-foreground">
-          Join 1,000+ projects already using OpenPanel. By creating an account
-          you accept the{' '}
+          Let's start with creating your account. By creating an account you
+          accept the{' '}
           <a
-            className="underline transition-colors hover:text-foreground"
+            target="_blank"
             href="https://openpanel.dev/terms"
             rel="noreferrer"
-            target="_blank"
+            className="underline hover:text-foreground transition-colors"
           >
             Terms of Service
           </a>{' '}
           and{' '}
           <a
-            className="underline transition-colors hover:text-foreground"
+            target="_blank"
             href="https://openpanel.dev/privacy"
             rel="noreferrer"
-            target="_blank"
+            className="underline hover:text-foreground transition-colors"
           >
             Privacy Policy
           </a>
@@ -84,8 +85,8 @@ function Component() {
       </div>
 
       {invite && !invite.isExpired && (
-        <div className="mb-6 rounded-lg border border-border bg-card p-6">
-          <h2 className="mb-2 font-semibold text-xl">
+        <div className="bg-card border border-border rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-2">
             Invitation to {invite.organization?.name}
           </h2>
           <p className="text-muted-foreground">
@@ -95,8 +96,8 @@ function Component() {
         </div>
       )}
       {invite?.isExpired && (
-        <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/10 p-6">
-          <h2 className="mb-2 font-semibold text-destructive text-xl">
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-2 text-destructive">
             Invitation to {invite.organization?.name} has expired
           </h2>
           <p className="text-muted-foreground">
@@ -107,17 +108,14 @@ function Component() {
       )}
 
       <div className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <SignInGithub inviteId={inviteId} type="sign-up" />
-          <SignInGoogle inviteId={inviteId} type="sign-up" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SignInGithub type="sign-up" inviteId={inviteId} />
+          <SignInGoogle type="sign-up" inviteId={inviteId} />
         </div>
-        <p className="text-center text-muted-foreground text-xs">
-          No credit card required · Free 30-day trial · Cancel anytime
-        </p>
 
         <Or className="my-6" />
 
-        <div className="mb-4 flex items-center gap-2 font-semibold text-lg">
+        <div className="flex items-center gap-2 font-semibold mb-4 text-lg">
           <MailIcon className="size-4" />
           Sign up with email
         </div>

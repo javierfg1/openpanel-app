@@ -1,5 +1,11 @@
+import { logger as baseLogger } from '@/utils/logger';
+import { createSessionEndJob, getSessionEnd } from '@/utils/session-handler';
 import { getTime, isSameDomain, parsePath } from '@openpanel/common';
-import { getReferrerWithQuery, parseReferrer } from '@openpanel/common/server';
+import {
+  getReferrerWithQuery,
+  parseReferrer,
+  parseUserAgent,
+} from '@openpanel/common/server';
 import type { IServiceCreateEventPayload, IServiceEvent } from '@openpanel/db';
 import {
   checkNotificationRulesForEvent,
@@ -10,12 +16,8 @@ import {
 } from '@openpanel/db';
 import type { ILogger } from '@openpanel/logger';
 import type { EventsQueuePayloadIncomingEvent } from '@openpanel/queue';
-import { anyPass, isEmpty, isNil, mergeDeepRight, omit, reject } from 'ramda';
-import { logger as baseLogger } from '@/utils/logger';
-import {
-  createSessionEndJob,
-  extendSessionEndJob,
-} from '@/utils/session-handler';
+import * as R from 'ramda';
+import { v4 as uuid } from 'uuid';
 
 const GLOBAL_PROPERTIES = ['__path', '__referrer', '__timestamp', '__revenue'];
 
@@ -23,76 +25,61 @@ const GLOBAL_PROPERTIES = ['__path', '__referrer', '__timestamp', '__revenue'];
 // First it will strip '' and undefined/null from B
 // Then it will merge the two objects with a standard ramda merge function
 const merge = <A, B>(a: Partial<A>, b: Partial<B>): A & B =>
-  mergeDeepRight(a, reject(anyPass([isEmpty, isNil]))(b)) as A & B;
-
-/** Check if payload matches project-level event exclude filters */
-async function isEventExcludedByProjectFilter(
-  payload: IServiceCreateEventPayload,
-  projectId: string
-): Promise<boolean> {
-  const project = await getProjectByIdCached(projectId);
-  const eventExcludeFilters = (project?.filters ?? []).filter(
-    (f) => f.type === 'event'
-  );
-  if (eventExcludeFilters.length === 0) {
-    return false;
-  }
-  return eventExcludeFilters.some((filter) => matchEvent(payload, filter));
-}
+  R.mergeDeepRight(a, R.reject(R.anyPass([R.isEmpty, R.isNil]))(b)) as A & B;
 
 async function createEventAndNotify(
   payload: IServiceCreateEventPayload,
   logger: ILogger,
-  projectId: string
+  projectId: string,
 ) {
   // Check project-level event exclude filters
-  const isExcluded = await isEventExcludedByProjectFilter(payload, projectId);
-  if (isExcluded) {
-    logger.info('Event excluded by project filter', {
-      event: payload.name,
-      projectId,
-    });
-    return null;
+  const project = await getProjectByIdCached(projectId);
+  const eventExcludeFilters = (project?.filters ?? []).filter(
+    (f) => f.type === 'event',
+  );
+  if (eventExcludeFilters.length > 0) {
+    const isExcluded = eventExcludeFilters.some((filter) =>
+      matchEvent(payload, filter),
+    );
+    if (isExcluded) {
+      logger.info('Event excluded by project filter', {
+        event: payload.name,
+        projectId,
+      });
+      return null
+    }
   }
 
   logger.info('Creating event', { event: payload });
   const [event] = await Promise.all([
     createEvent(payload),
-    checkNotificationRulesForEvent(payload).catch(() => null),
+    checkNotificationRulesForEvent(payload).catch(() => {}),
   ]);
-
   return event;
 }
 
 const parseRevenue = (revenue: unknown): number | undefined => {
-  if (!revenue) {
-    return undefined;
-  }
-  if (typeof revenue === 'number') {
-    return revenue;
-  }
+  if (!revenue) return undefined;
+  if (typeof revenue === 'number') return revenue;
   if (typeof revenue === 'string') {
     const parsed = Number.parseFloat(revenue);
-    if (Number.isNaN(parsed)) {
-      return undefined;
-    }
+    if (Number.isNaN(parsed)) return undefined;
     return parsed;
   }
   return undefined;
 };
 
 export async function incomingEvent(
-  jobPayload: EventsQueuePayloadIncomingEvent['payload']
+  jobPayload: EventsQueuePayloadIncomingEvent['payload'],
 ) {
   const {
     geo,
     event: body,
     headers,
     projectId,
-    deviceId,
-    sessionId,
-    uaInfo,
-    session,
+    currentDeviceId,
+    previousDeviceId,
+    uaInfo: _uaInfo,
   } = jobPayload;
   const properties = body.properties ?? {};
   const reqId = headers['request-id'] ?? 'unknown';
@@ -120,21 +107,21 @@ export async function incomingEvent(
     ? null
     : parseReferrer(getProperty('__referrer'));
   const utmReferrer = getReferrerWithQuery(query);
+  const userAgent = headers['user-agent'];
   const sdkName = headers['openpanel-sdk-name'];
   const sdkVersion = headers['openpanel-sdk-version'];
+  // TODO: Remove both user-agent and parseUserAgent
+  const uaInfo = _uaInfo ?? parseUserAgent(userAgent, properties);
 
-  const baseEvent: IServiceCreateEventPayload = {
+  const baseEvent = {
     name: body.name,
     profileId,
     projectId,
-    deviceId,
-    sessionId,
-    properties: omit(GLOBAL_PROPERTIES, {
+    properties: R.omit(GLOBAL_PROPERTIES, {
       ...properties,
       __hash: hash,
       __query: query,
     }),
-    groups: body.groups ?? [],
     createdAt,
     duration: 0,
     sdkName,
@@ -148,7 +135,7 @@ export async function incomingEvent(
     origin,
     referrer: referrer?.url || '',
     referrerName: utmReferrer?.name || referrer?.name || referrer?.url,
-    referrerType: utmReferrer?.type || referrer?.type || '',
+    referrerType: referrer?.type || utmReferrer?.type || '',
     os: uaInfo.os,
     osVersion: uaInfo.osVersion,
     browser: uaInfo.browser,
@@ -160,17 +147,16 @@ export async function incomingEvent(
       body.name === 'revenue' && '__revenue' in properties
         ? parseRevenue(properties.__revenue)
         : undefined,
-  };
+  } as const;
 
   // if timestamp is from the past we dont want to create a new session
   if (uaInfo.isServer || isTimestampFromThePast) {
-    const session =
-      profileId && !isTimestampFromThePast
-        ? await sessionBuffer.getExistingSession({
-            profileId,
-            projectId,
-          })
-        : null;
+    const session = profileId
+      ? await sessionBuffer.getExistingSession({
+          profileId,
+          projectId,
+        })
+      : null;
 
     const payload = {
       ...baseEvent,
@@ -198,29 +184,32 @@ export async function incomingEvent(
     return createEventAndNotify(payload as IServiceEvent, logger, projectId);
   }
 
+  const sessionEnd = await getSessionEnd({
+    projectId,
+    currentDeviceId,
+    previousDeviceId,
+    profileId,
+  });
+
+  const lastScreenView = sessionEnd
+    ? await sessionBuffer.getExistingSession({
+        sessionId: sessionEnd.sessionId,
+      })
+    : null;
+
   const payload: IServiceCreateEventPayload = merge(baseEvent, {
-    referrer: session?.referrer ?? baseEvent.referrer,
-    referrerName: session?.referrerName ?? baseEvent.referrerName,
-    referrerType: session?.referrerType ?? baseEvent.referrerType,
+    deviceId: sessionEnd?.deviceId ?? currentDeviceId,
+    sessionId: sessionEnd?.sessionId ?? uuid(),
+    referrer: sessionEnd?.referrer ?? baseEvent.referrer,
+    referrerName: sessionEnd?.referrerName ?? baseEvent.referrerName,
+    referrerType: sessionEnd?.referrerType ?? baseEvent.referrerType,
+    // if the path is not set, use the last screen view path
+    path: baseEvent.path || lastScreenView?.exit_path || '',
+    origin: baseEvent.origin || lastScreenView?.exit_origin || '',
   } as Partial<IServiceCreateEventPayload>) as IServiceCreateEventPayload;
 
-  const isExcluded = await isEventExcludedByProjectFilter(payload, projectId);
-  if (isExcluded) {
-    logger.info(
-      'Skipping session_start and event (excluded by project filter)',
-      { event: payload.name, projectId }
-    );
-    return null;
-  }
-
-  if (session) {
-    await extendSessionEndJob({
-      projectId,
-      deviceId,
-    }).catch((error) => {
-      logger.warn('Failed to extend session end job', { error });
-    });
-  } else {
+  if (!sessionEnd) {
+    logger.info('Creating session start event', { event: payload });
     await createEventAndNotify(
       {
         ...payload,
@@ -233,12 +222,22 @@ export async function incomingEvent(
       logger.error('Error creating session start event', { event: payload });
       throw error;
     });
+  }
 
+  const event = await createEventAndNotify(payload, logger, projectId);
+
+  if (!event) {
+    // Skip creating session end when event was excluded
+    return null
+  }
+
+  if (!sessionEnd) {
+    logger.info('Creating session end job', { event: payload });
     await createSessionEndJob({ payload }).catch((error) => {
       logger.error('Error creating session end job', { event: payload });
       throw error;
     });
   }
 
-  return createEventAndNotify(payload, logger, projectId);
+  return event;
 }

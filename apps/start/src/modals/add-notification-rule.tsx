@@ -1,7 +1,28 @@
+import type { RouterOutputs } from '@/trpc/client';
+
+import { SheetContent } from '@/components/ui/sheet';
+import { useQueryClient } from '@tanstack/react-query';
+
+import { toast } from 'sonner';
+import { popModal } from '.';
+import { ModalHeader } from './Modal/Container';
+
+import { ColorSquare } from '@/components/color-square';
+import { InputWithLabel, WithLabel } from '@/components/forms/input-with-label';
+import { PureFilterItem } from '@/components/report/sidebar/filters/FilterItem';
+import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
+import { ComboboxAdvanced } from '@/components/ui/combobox-advanced';
+import { ComboboxEvents } from '@/components/ui/combobox-events';
+import { Textarea } from '@/components/ui/textarea';
+import { useAppParams } from '@/hooks/use-app-params';
+import { useEventNames } from '@/hooks/use-event-names';
+import { useEventProperties } from '@/hooks/use-event-properties';
+import { useTRPC } from '@/integrations/trpc/react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { shortId } from '@openpanel/common';
 import { zCreateNotificationRule } from '@openpanel/validation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { FilterIcon, PlusIcon, SaveIcon, TrashIcon } from 'lucide-react';
 import {
   Controller,
@@ -11,24 +32,7 @@ import {
   useForm,
   useWatch,
 } from 'react-hook-form';
-import { toast } from 'sonner';
 import type { z } from 'zod';
-import { popModal } from '.';
-import { ModalHeader } from './Modal/Container';
-import { ColorSquare } from '@/components/color-square';
-import { InputWithLabel, WithLabel } from '@/components/forms/input-with-label';
-import { PureFilterItem } from '@/components/report/sidebar/filters/FilterItem';
-import { Button } from '@/components/ui/button';
-import { Combobox } from '@/components/ui/combobox';
-import { ComboboxAdvanced } from '@/components/ui/combobox-advanced';
-import { ComboboxEvents } from '@/components/ui/combobox-events';
-import { SheetContent } from '@/components/ui/sheet';
-import { Textarea } from '@/components/ui/textarea';
-import { useAppParams } from '@/hooks/use-app-params';
-import { useEventNames } from '@/hooks/use-event-names';
-import { useEventProperties } from '@/hooks/use-event-properties';
-import { useTRPC } from '@/integrations/trpc/react';
-import type { RouterOutputs } from '@/trpc/client';
 
 interface Props {
   rule?: RouterOutputs['notification']['rules'][number];
@@ -67,21 +71,21 @@ export default function AddNotificationRule({ rule }: Props) {
     trpc.notification.createOrUpdateRule.mutationOptions({
       onSuccess() {
         toast.success(
-          rule ? 'Notification rule updated' : 'Notification rule created'
+          rule ? 'Notification rule updated' : 'Notification rule created',
         );
         client.refetchQueries(
           trpc.notification.rules.queryFilter({
             projectId,
-          })
+          }),
         );
         popModal();
       },
-    })
+    }),
   );
   const integrationsQuery = useQuery(
     trpc.integration.list.queryOptions({
       organizationId: organizationId!,
-    })
+    }),
   );
 
   const eventsArray = useFieldArray({
@@ -102,18 +106,18 @@ export default function AddNotificationRule({ rule }: Props) {
   return (
     <SheetContent className="[&>button.absolute]:hidden">
       <ModalHeader title={rule ? 'Edit rule' : 'Create rule'} />
-      <form className="col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="col gap-4">
         <InputWithLabel
-          error={form.formState.errors.name?.message}
           label="Rule name"
           placeholder="Eg. Sign ups on android"
+          error={form.formState.errors.name?.message}
           {...form.register('name')}
         />
 
         <WithLabel
+          label="Type"
           // @ts-expect-error
           error={form.formState.errors.config?.type.message}
-          label="Type"
         >
           <Controller
             control={form.control}
@@ -122,6 +126,7 @@ export default function AddNotificationRule({ rule }: Props) {
               <Combobox
                 {...field}
                 className="w-full"
+                placeholder="Select type"
                 // @ts-expect-error
                 error={form.formState.errors.config?.type.message}
                 items={[
@@ -134,7 +139,6 @@ export default function AddNotificationRule({ rule }: Props) {
                     value: 'funnel',
                   },
                 ]}
-                placeholder="Select type"
               />
             )}
           />
@@ -144,15 +148,16 @@ export default function AddNotificationRule({ rule }: Props) {
             {eventsArray.fields.map((field, index) => {
               return (
                 <EventField
+                  key={field.id}
                   form={form}
                   index={index}
-                  key={field.id}
                   remove={() => eventsArray.remove(index)}
                 />
               );
             })}
             <Button
               className="self-start"
+              variant={'outline'}
               icon={PlusIcon}
               onClick={() =>
                 eventsArray.append({
@@ -161,7 +166,6 @@ export default function AddNotificationRule({ rule }: Props) {
                   segment: 'event',
                 })
               }
-              variant={'outline'}
             >
               Add event
             </Button>
@@ -169,6 +173,7 @@ export default function AddNotificationRule({ rule }: Props) {
         </WithLabel>
 
         <WithLabel
+          label="Template"
           info={
             <div className="prose dark:prose-invert">
               <p>
@@ -192,7 +197,7 @@ export default function AddNotificationRule({ rule }: Props) {
                   profile property
                 </li>
                 <li>
-                  <div className="flex flex-wrap gap-x-2">
+                  <div className="flex gap-x-2 flex-wrap">
                     And many more...
                     <code>profileId</code>
                     <code>createdAt</code>
@@ -215,7 +220,6 @@ export default function AddNotificationRule({ rule }: Props) {
               </ul>
             </div>
           }
-          label="Template"
         >
           <Textarea
             {...form.register('template')}
@@ -230,19 +234,19 @@ export default function AddNotificationRule({ rule }: Props) {
             <WithLabel label="Integrations">
               <ComboboxAdvanced
                 {...field}
+                value={field.value ?? []}
                 className="w-full"
+                placeholder="Pick integrations"
                 items={integrations.map((integration) => ({
                   label: integration.name,
                   value: integration.id,
                 }))}
-                placeholder="Pick integrations"
-                value={field.value ?? []}
               />
             </WithLabel>
           )}
         />
 
-        <Button icon={SaveIcon} type="submit">
+        <Button type="submit" icon={SaveIcon}>
           {rule ? 'Update' : 'Create'}
         </Button>
       </form>
@@ -272,24 +276,27 @@ function EventField({
   const properties = useEventProperties({ projectId });
 
   return (
-    <div className="rounded border bg-def-100">
-      <div className="row items-center gap-2 p-2">
+    <div className="border bg-def-100 rounded">
+      <div className="row gap-2 items-center p-2">
         <ColorSquare>{index + 1}</ColorSquare>
         <Controller
           control={form.control}
           name={`config.events.${index}.name`}
           render={({ field }) => (
             <ComboboxEvents
-              className="flex-1"
-              items={eventNames}
-              onChange={field.onChange}
-              placeholder="Select event"
               searchable
+              className="flex-1"
               value={field.value}
+              placeholder="Select event"
+              onChange={field.onChange}
+              items={eventNames}
             />
           )}
         />
         <Combobox
+          searchable
+          placeholder="Select a filter"
+          value=""
           items={properties.map((item) => ({
             label: item,
             value: item,
@@ -302,33 +309,27 @@ function EventField({
               value: [],
             });
           }}
-          placeholder="Select a filter"
-          searchable
-          value=""
         >
-          <Button icon={FilterIcon} size={'icon'} variant={'outline'} />
+          <Button variant={'outline'} icon={FilterIcon} size={'icon'} />
         </Combobox>
         <Button
-          className="text-destructive"
-          icon={TrashIcon}
           onClick={() => {
             remove();
           }}
-          size={'icon'}
           variant={'outline'}
+          className="text-destructive"
+          icon={TrashIcon}
+          size={'icon'}
         />
       </div>
       {filtersArray.fields.map((filter, index) => {
         return (
-          <div className="border-t p-2" key={filter.id}>
+          <div key={filter.id} className="p-2 border-t">
             <PureFilterItem
               eventName={eventName}
               filter={filter}
-              onChangeOperator={(operator) => {
-                filtersArray.update(index, {
-                  ...filter,
-                  operator,
-                });
+              onRemove={() => {
+                filtersArray.remove(index);
               }}
               onChangeValue={(value) => {
                 filtersArray.update(index, {
@@ -336,8 +337,11 @@ function EventField({
                   value,
                 });
               }}
-              onRemove={() => {
-                filtersArray.remove(index);
+              onChangeOperator={(operator) => {
+                filtersArray.update(index, {
+                  ...filter,
+                  operator,
+                });
               }}
             />
           </div>

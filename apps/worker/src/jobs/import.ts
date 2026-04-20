@@ -1,17 +1,17 @@
 import {
+  type IClickhouseEvent,
+  type ImportSteps,
+  type Prisma,
   backfillSessionsToProduction,
-  cleanupSessionStartEndEvents,
-  cleanupStagingData,
   createSessionsStartEndEvents,
   db,
-  generateGapBasedSessionIds,
+  formatClickhouseDate,
+  generateSessionIds,
   getImportDateBounds,
-  type IClickhouseEvent,
-  type IClickhouseProfile,
+  getImportProgress,
   insertImportBatch,
-  insertProfilesBatch,
+  markImportComplete,
   moveImportsToProduction,
-  type Prisma,
   updateImportStatus,
 } from '@openpanel/db';
 import { MixpanelProvider, UmamiProvider } from '@openpanel/importer';
@@ -22,261 +22,294 @@ import { logger } from '../utils/logger';
 
 const BATCH_SIZE = Number.parseInt(process.env.IMPORT_BATCH_SIZE || '5000', 10);
 
-function yieldToEventLoop(): Promise<void> {
+/**
+ * Yields control back to the event loop to prevent stalled jobs
+ */
+async function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 100);
   });
 }
 
-const RESUMABLE_STEPS = ['creating_sessions', 'moving', 'backfilling_sessions'];
-
 export async function importJob(job: Job<ImportQueuePayload>) {
   const { importId } = job.data.payload;
 
-  const record = await db.import.findUniqueOrThrow({
+  const record = await db.$primary().import.findUniqueOrThrow({
     where: { id: importId },
-    include: { project: true },
+    include: {
+      project: true,
+    },
   });
 
-  const jobLogger = logger.child({ importId, config: record.config });
-  jobLogger.info('Starting import job');
+  const jobLogger = logger.child({
+    importId,
+    config: record.config,
+  });
 
+  type ValidStep = Exclude<ImportSteps, 'failed' | 'completed'>;
+  const steps: Record<ValidStep, number> = {
+    loading: 0,
+    generating_session_ids: 1,
+    creating_sessions: 2,
+    moving: 3,
+    backfilling_sessions: 4,
+  };
+
+  jobLogger.info('Starting import job');
   const providerInstance = createProvider(record, jobLogger);
-  const shouldGenerateSessionIds = providerInstance.shouldGenerateSessionIds();
 
   try {
-    const isRetry = record.currentStep !== null;
-    const canResume =
-      isRetry && RESUMABLE_STEPS.includes(record.currentStep as string);
+    // Check if this is a resume operation
+    const isNewImport = record.currentStep === null;
 
-    // -------------------------------------------------------
-    // STAGING PHASE: clean slate on failure, run from scratch
-    // -------------------------------------------------------
-    if (!canResume) {
-      if (isRetry) {
-        jobLogger.info(
-          'Retry detected before resumable phase — cleaning staging data'
-        );
-        await cleanupStagingData(importId);
+    if (isNewImport) {
+      await updateImportStatus(jobLogger, job, importId, {
+        step: 'loading',
+      });
+    } else {
+      jobLogger.info('Resuming import from previous state', {
+        currentStep: record.currentStep,
+        currentBatch: record.currentBatch,
+      });
+    }
+
+    // Try to get a precomputed total for better progress reporting
+    const totalEvents = await providerInstance
+      .getTotalEventsCount()
+      .catch(() => -1);
+    let processedEvents = record.processedEvents;
+
+    const resumeLoadingFrom =
+      (record.currentStep === 'loading' && record.currentBatch) || undefined;
+
+    const resumeGeneratingSessionIdsFrom =
+      (record.currentStep === 'generating_session_ids' &&
+        record.currentBatch) ||
+      undefined;
+
+    const resumeCreatingSessionsFrom =
+      (record.currentStep === 'creating_sessions' && record.currentBatch) ||
+      undefined;
+
+    const resumeMovingFrom =
+      (record.currentStep === 'moving' && record.currentBatch) || undefined;
+
+    const resumeBackfillingSessionsFrom =
+      (record.currentStep === 'backfilling_sessions' && record.currentBatch) ||
+      undefined;
+
+    // Example:
+    // shouldRunStep(0) // currStep = 2 (should not run)
+    // shouldRunStep(1) // currStep = 2 (should not run)
+    // shouldRunStep(2) // currStep = 2 (should run)
+    // shouldRunStep(3) // currStep = 2 (should run)
+    const shouldRunStep = (step: ValidStep) => {
+      if (isNewImport) {
+        return true;
       }
 
-      // Phase 1: Load events into staging
-      await updateImportStatus(jobLogger, job, importId, { step: 'loading' });
+      const stepToRunIndex = steps[step];
+      const currentStepIndex = steps[record.currentStep as ValidStep];
+      return stepToRunIndex >= currentStepIndex;
+    };
 
-      const totalEvents = await providerInstance
-        .getTotalEventsCount()
-        .catch(() => -1);
-      let processedEvents = 0;
-      const eventBatch: IClickhouseEvent[] = [];
+    async function whileBounds(
+      from: string | undefined,
+      callback: (from: string, to: string) => Promise<void>,
+    ) {
+      const bounds = await getImportDateBounds(importId, from);
+      if (bounds.min && bounds.max) {
+        const start = new Date(bounds.min);
+        const end = new Date(bounds.max);
+        let cursor = new Date(start);
+        while (cursor < end) {
+          const next = new Date(cursor);
+          next.setDate(next.getDate() + 1);
+          await callback(
+            formatClickhouseDate(cursor, true),
+            formatClickhouseDate(next, true),
+          );
+          cursor = next;
 
-      for await (const rawEvent of providerInstance.parseSource()) {
+          // Yield control back to event loop after processing each day
+          await yieldToEventLoop();
+        }
+      }
+    }
+
+    // Phase 1: Fetch & Transform - Process events in batches
+    if (shouldRunStep('loading')) {
+      const eventBatch: any = [];
+      for await (const rawEvent of providerInstance.parseSource(
+        resumeLoadingFrom,
+      )) {
+        // Validate event
         if (
           !providerInstance.validate(
-            // @ts-expect-error -- provider-specific raw type
-            rawEvent
+            // @ts-expect-error
+            rawEvent,
           )
         ) {
           jobLogger.warn('Skipping invalid event', { rawEvent });
           continue;
         }
 
-        const transformed: IClickhouseEvent = providerInstance.transformEvent(
-          // @ts-expect-error -- provider-specific raw type
-          rawEvent
-        );
+        eventBatch.push(rawEvent);
 
-        // Session IDs for providers that need them (e.g. Mixpanel) are generated
-        // in generateGapBasedSessionIds after loading, using gap-based logic.
-        eventBatch.push(transformed);
-
+        // Process batch when it reaches the batch size
         if (eventBatch.length >= BATCH_SIZE) {
-          await insertImportBatch(eventBatch, importId);
-          processedEvents += eventBatch.length;
+          jobLogger.info('Processing batch', { batchSize: eventBatch.length });
 
-          const batchDate = new Date(eventBatch[0]?.created_at || '')
+          const transformedEvents: IClickhouseEvent[] = eventBatch.map(
+            (
+              // @ts-expect-error
+              event,
+            ) => providerInstance!.transformEvent(event),
+          );
+
+          await insertImportBatch(transformedEvents, importId);
+
+          processedEvents += eventBatch.length;
+          eventBatch.length = 0;
+
+          const createdAt = new Date(transformedEvents[0]?.created_at || '')
             .toISOString()
             .split('T')[0];
 
           await updateImportStatus(jobLogger, job, importId, {
             step: 'loading',
-            batch: batchDate,
+            batch: createdAt,
             totalEvents,
             processedEvents,
           });
 
-          eventBatch.length = 0;
+          // Yield control back to event loop after processing each batch
           await yieldToEventLoop();
         }
       }
 
+      // Process remaining events in the last batch
       if (eventBatch.length > 0) {
-        await insertImportBatch(eventBatch, importId);
-        processedEvents += eventBatch.length;
+        const transformedEvents = eventBatch.map(
+          (
+            // @ts-expect-error
+            event,
+          ) => providerInstance!.transformEvent(event),
+        );
 
-        const batchDate = new Date(eventBatch[0]?.created_at || '')
+        await insertImportBatch(transformedEvents, importId);
+
+        processedEvents += eventBatch.length;
+        eventBatch.length = 0;
+
+        const createdAt = new Date(transformedEvents[0]?.created_at || '')
           .toISOString()
           .split('T')[0];
 
         await updateImportStatus(jobLogger, job, importId, {
           step: 'loading',
-          batch: batchDate,
+          batch: createdAt,
           totalEvents,
           processedEvents,
         });
-        eventBatch.length = 0;
-      }
 
-      jobLogger.info('Loading complete', { processedEvents });
-
-      // Phase 1b: Load user profiles (Mixpanel only)
-      const profileBatchSize = 5000;
-      if (
-        'streamProfiles' in providerInstance &&
-        typeof (providerInstance as MixpanelProvider).streamProfiles ===
-          'function'
-      ) {
-        await updateImportStatus(jobLogger, job, importId, {
-          step: 'loading_profiles',
-        });
-
-        const profileBatch: IClickhouseProfile[] = [];
-        let processedProfiles = 0;
-
-        for await (const rawProfile of (
-          providerInstance as MixpanelProvider
-        ).streamProfiles()) {
-          const profile = (
-            providerInstance as MixpanelProvider
-          ).transformProfile(rawProfile);
-          profileBatch.push(profile);
-
-          if (profileBatch.length >= profileBatchSize) {
-            await insertProfilesBatch(profileBatch, record.projectId);
-            processedProfiles += profileBatch.length;
-            await updateImportStatus(jobLogger, job, importId, {
-              step: 'loading_profiles',
-              processedProfiles,
-            });
-            profileBatch.length = 0;
-            await yieldToEventLoop();
-          }
-        }
-
-        if (profileBatch.length > 0) {
-          await insertProfilesBatch(profileBatch, record.projectId);
-          processedProfiles += profileBatch.length;
-          await updateImportStatus(jobLogger, job, importId, {
-            step: 'loading_profiles',
-            processedProfiles,
-            totalProfiles: processedProfiles,
-          });
-        }
-
-        jobLogger.info('Profile loading complete', { processedProfiles });
-      }
-
-      // Phase 2: Generate gap-based session IDs (Mixpanel etc.)
-      if (shouldGenerateSessionIds) {
-        await updateImportStatus(jobLogger, job, importId, {
-          step: 'generating_sessions',
-        });
-        await generateGapBasedSessionIds(importId);
+        // Yield control back to event loop after processing final batch
         await yieldToEventLoop();
-        jobLogger.info('Session ID generation complete');
       }
     }
 
-    // -------------------------------------------------------
-    // SESSION CREATION PHASE: resumable by cleaning session_start/end
-    // -------------------------------------------------------
-    const skipSessionCreation =
-      canResume && record.currentStep !== 'creating_sessions';
+    // Phase 2: Generate session IDs if provider requires it
+    if (
+      shouldRunStep('generating_session_ids') &&
+      providerInstance.shouldGenerateSessionIds()
+    ) {
+      await whileBounds(resumeGeneratingSessionIdsFrom, async (from) => {
+        console.log('Generating session IDs', { from });
+        await generateSessionIds(importId, from);
+        await updateImportStatus(jobLogger, job, importId, {
+          step: 'generating_session_ids',
+          batch: from,
+        });
 
-    if (!skipSessionCreation) {
-      if (canResume && record.currentStep === 'creating_sessions') {
-        jobLogger.info(
-          'Retry at creating_sessions — cleaning existing session_start/end events'
-        );
-        await cleanupSessionStartEndEvents(importId);
-      }
-
-      await updateImportStatus(jobLogger, job, importId, {
-        step: 'creating_sessions',
-        batch: 'all sessions',
+        // Yield control back to event loop after processing each day
+        await yieldToEventLoop();
       });
-      await createSessionsStartEndEvents(importId);
-      await yieldToEventLoop();
 
-      jobLogger.info('Session event creation complete');
+      jobLogger.info('Session ID generation complete');
     }
 
-    // -------------------------------------------------------
-    // PRODUCTION PHASE: resume-safe, track progress per batch
-    // -------------------------------------------------------
+    // Phase 3-5: Process in daily batches for robustness
 
-    // Phase 3: Move staging events to production (per-day)
-    const resumeMovingFrom =
-      canResume && record.currentStep === 'moving'
-        ? (record.currentBatch ?? undefined)
-        : undefined;
+    if (shouldRunStep('creating_sessions')) {
+      await whileBounds(resumeCreatingSessionsFrom, async (from) => {
+        await createSessionsStartEndEvents(importId, from);
+        await updateImportStatus(jobLogger, job, importId, {
+          step: 'creating_sessions',
+          batch: from,
+        });
 
-    // currentBatch is the last successfully completed day — resume from the next day to avoid re-inserting it
-    const moveFromDate = (() => {
-      if (!resumeMovingFrom) {
-        return undefined;
-      }
-      const next = new Date(`${resumeMovingFrom}T12:00:00Z`);
-      next.setUTCDate(next.getUTCDate() + 1);
-      return next.toISOString().split('T')[0]!;
-    })();
+        // Yield control back to event loop after processing each day
+        await yieldToEventLoop();
+      });
+    }
 
-    const bounds = await getImportDateBounds(importId, moveFromDate);
-    if (bounds.min && bounds.max) {
-      const startDate = bounds.min.split(' ')[0]!;
-      const endDate = bounds.max.split(' ')[0]!;
-      const cursor = new Date(`${startDate}T12:00:00Z`);
-      const end = new Date(`${endDate}T12:00:00Z`);
-
-      while (cursor <= end) {
-        const dateStr = cursor.toISOString().split('T')[0]!;
-
-        await moveImportsToProduction(importId, dateStr);
+    if (shouldRunStep('moving')) {
+      await whileBounds(resumeMovingFrom, async (from) => {
+        await moveImportsToProduction(importId, from);
         await updateImportStatus(jobLogger, job, importId, {
           step: 'moving',
-          batch: dateStr,
+          batch: from,
         });
 
+        // Yield control back to event loop after processing each day
         await yieldToEventLoop();
-        cursor.setUTCDate(cursor.getUTCDate() + 1);
-      }
+      });
     }
 
-    jobLogger.info('Move to production complete');
+    if (shouldRunStep('backfilling_sessions')) {
+      await whileBounds(resumeBackfillingSessionsFrom, async (from) => {
+        await backfillSessionsToProduction(importId, from);
+        await updateImportStatus(jobLogger, job, importId, {
+          step: 'backfilling_sessions',
+          batch: from,
+        });
 
-    // Phase 4: Backfill sessions table
+        // Yield control back to event loop after processing each day
+        await yieldToEventLoop();
+      });
+    }
+
+    await markImportComplete(importId);
     await updateImportStatus(jobLogger, job, importId, {
-      step: 'backfilling_sessions',
-      batch: 'all sessions',
+      step: 'completed',
     });
-    await backfillSessionsToProduction(importId);
-    await yieldToEventLoop();
+    jobLogger.info('Import marked as complete');
 
-    jobLogger.info('Session backfill complete');
+    // Get final progress
+    const finalProgress = await getImportProgress(importId);
 
-    // Done
-    await updateImportStatus(jobLogger, job, importId, { step: 'completed' });
-    jobLogger.info('Import completed');
+    jobLogger.info('Import job completed successfully', {
+      totalEvents: finalProgress.totalEvents,
+      insertedEvents: finalProgress.insertedEvents,
+      status: finalProgress.status,
+    });
 
-    return { success: true };
+    return {
+      success: true,
+      totalEvents: finalProgress.totalEvents,
+      processedEvents: finalProgress.insertedEvents,
+    };
   } catch (error) {
     jobLogger.error('Import job failed', { error });
 
+    // Mark import as failed
     try {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       await updateImportStatus(jobLogger, job, importId, {
         step: 'failed',
         errorMessage: errorMsg,
       });
+      jobLogger.warn('Import marked as failed', { error: errorMsg });
     } catch (markError) {
       jobLogger.error('Failed to mark import as failed', { error, markError });
     }
@@ -287,7 +320,7 @@ export async function importJob(job: Job<ImportQueuePayload>) {
 
 function createProvider(
   record: Prisma.ImportGetPayload<{ include: { project: true } }>,
-  jobLogger: ILogger
+  jobLogger: ILogger,
 ) {
   const config = record.config;
   switch (config.provider) {

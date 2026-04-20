@@ -1,12 +1,8 @@
-import {
-  getSessionDistinctValues,
-  getSessionList,
-  getSessionReplayChunksFrom,
-  SESSION_DISTINCT_FIELDS,
-  sessionService,
-} from '@openpanel/db';
-import { zChartEventFilter } from '@openpanel/validation';
 import { z } from 'zod';
+
+import { getSessionList, sessionService } from '@openpanel/db';
+import { zChartEventFilter } from '@openpanel/validation';
+
 import { createTRPCRouter, protectedProcedure } from '../trpc';
 
 export function encodeCursor(cursor: {
@@ -18,7 +14,7 @@ export function encodeCursor(cursor: {
 }
 
 export function decodeCursor(
-  encoded: string
+  encoded: string,
 ): { createdAt: string; id: string } | null {
   try {
     const json = Buffer.from(encoded, 'base64url').toString('utf8');
@@ -44,45 +40,25 @@ export const sessionRouter = createTRPCRouter({
         endDate: z.date().optional(),
         search: z.string().optional(),
         take: z.number().default(50),
-        minPageViews: z.number().nullish(),
-        maxPageViews: z.number().nullish(),
-        minEvents: z.number().nullish(),
-        maxEvents: z.number().nullish(),
-      })
+      }),
     )
-    .query(({ input }) => {
-      return getSessionList({
+    .query(async ({ input }) => {
+      const cursor = input.cursor ? decodeCursor(input.cursor) : null;
+      const data = await getSessionList({
         ...input,
-        cursor: input.cursor ? new Date(input.cursor) : undefined,
+        cursor,
       });
-    }),
-
-  distinctValues: protectedProcedure
-    .input(
-      z.object({
-        projectId: z.string(),
-        field: z.enum(SESSION_DISTINCT_FIELDS),
-      })
-    )
-    .query(({ input }) => {
-      return getSessionDistinctValues(input.projectId, input.field);
+      return {
+        data: data.items,
+        meta: {
+          next: data.meta.next ? encodeCursor(data.meta.next) : undefined,
+        },
+      };
     }),
 
   byId: protectedProcedure
     .input(z.object({ sessionId: z.string(), projectId: z.string() }))
-    .query(({ input: { sessionId, projectId } }) => {
+    .query(async ({ input: { sessionId, projectId } }) => {
       return sessionService.byId(sessionId, projectId);
-    }),
-
-  replayChunksFrom: protectedProcedure
-    .input(
-      z.object({
-        sessionId: z.string(),
-        projectId: z.string(),
-        fromIndex: z.number().int().min(0).default(0),
-      })
-    )
-    .query(({ input: { sessionId, projectId, fromIndex } }) => {
-      return getSessionReplayChunksFrom(sessionId, projectId, fromIndex);
     }),
 });

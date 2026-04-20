@@ -1,24 +1,20 @@
-import { getDefaultIntervalByDates } from '@openpanel/constants';
-import type { IInterval } from '@openpanel/validation';
-import { endOfDay, subMonths } from 'date-fns';
-import { CheckIcon, XIcon } from 'lucide-react';
-import { useState } from 'react';
-import { popModal } from '.';
-import { ModalContent } from './Modal/Container';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { useBreakpoint } from '@/hooks/use-breakpoint';
-import { formatDate } from '@/utils/date';
+import { subMonths } from 'date-fns';
+import { useState } from 'react';
 
-interface Props {
-  onChange: (payload: {
-    startDate: Date;
-    endDate: Date;
-    interval: IInterval;
-  }) => void;
+import { Input } from '@/components/ui/input';
+import { formatDate } from '@/utils/date';
+import { CheckIcon, XIcon } from 'lucide-react';
+import { popModal } from '.';
+import { ModalContent, ModalHeader } from './Modal/Container';
+
+type Props = {
+  onChange: (payload: { startDate: Date; endDate: Date }) => void;
   startDate?: Date;
   endDate?: Date;
-}
+};
 export default function DateRangerPicker({
   onChange,
   startDate: initialStartDate,
@@ -29,20 +25,20 @@ export default function DateRangerPicker({
   const [endDate, setEndDate] = useState(initialEndDate);
 
   return (
-    <ModalContent className="min-w-fit p-4 md:p-8">
+    <ModalContent className="p-4 md:p-8 min-w-fit">
       <Calendar
         captionLayout="dropdown"
-        className="mx-auto min-h-[310px] p-0 [&_table]:mx-auto [&_table]:w-auto"
-        defaultMonth={subMonths(
-          startDate ? new Date(startDate) : new Date(),
-          isBelowSm ? 0 : 1
-        )}
-        hidden={{
-          after: endOfDay(new Date()),
-        }}
         initialFocus
         mode="range"
-        numberOfMonths={isBelowSm ? 1 : 2}
+        defaultMonth={subMonths(
+          startDate ? new Date(startDate) : new Date(),
+          isBelowSm ? 0 : 1,
+        )}
+        selected={{
+          from: startDate,
+          to: endDate,
+        }}
+        toDate={new Date()}
         onSelect={(range) => {
           if (range?.from) {
             setStartDate(range.from);
@@ -51,39 +47,33 @@ export default function DateRangerPicker({
             setEndDate(range.to);
           }
         }}
-        selected={{
-          from: startDate,
-          to: endDate,
-        }}
+        numberOfMonths={isBelowSm ? 1 : 2}
+        className="mx-auto min-h-[310px] [&_table]:mx-auto [&_table]:w-auto p-0"
       />
-      <div className="col md:row flex-col-reverse gap-2">
+      <div className="col flex-col-reverse md:row gap-2">
         <Button
-          icon={XIcon}
-          onClick={() => popModal()}
           type="button"
           variant="outline"
+          onClick={() => popModal()}
+          icon={XIcon}
         >
           Cancel
         </Button>
 
         {startDate && endDate && (
           <Button
+            type="button"
             className="md:ml-auto"
-            icon={startDate && endDate ? CheckIcon : XIcon}
             onClick={() => {
               popModal();
               if (startDate && endDate) {
                 onChange({
-                  startDate,
-                  endDate,
-                  interval: getDefaultIntervalByDates(
-                    startDate.toISOString(),
-                    endDate.toISOString()
-                  )!,
+                  startDate: startDate,
+                  endDate: endDate,
                 });
               }
             }}
-            type="button"
+            icon={startDate && endDate ? CheckIcon : XIcon}
           >
             {startDate && endDate
               ? `Select ${formatDate(startDate)} - ${formatDate(endDate)}`

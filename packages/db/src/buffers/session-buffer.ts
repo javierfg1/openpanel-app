@@ -1,7 +1,8 @@
+import { type Redis, getRedisCache } from '@openpanel/redis';
+
 import { getSafeJson } from '@openpanel/json';
-import { getRedisCache, type Redis } from '@openpanel/redis';
 import { assocPath, clone } from 'ramda';
-import { ch, TABLE_NAMES } from '../clickhouse/client';
+import { TABLE_NAMES, ch } from '../clickhouse/client';
 import type { IClickhouseEvent } from '../services/event.service';
 import type { IClickhouseSession } from '../services/session.service';
 import { BaseBuffer } from './base-buffer';
@@ -34,23 +35,15 @@ export class SessionBuffer extends BaseBuffer {
       | {
           projectId: string;
           profileId: string;
-        }
+        },
   ) {
     let hit: string | null = null;
     if ('sessionId' in options) {
       hit = await this.redis.get(`session:${options.sessionId}`);
     } else {
-      const value = await this.redis.get(
-        `session:${options.projectId}:${options.profileId}`
+      hit = await this.redis.get(
+        `session:${options.projectId}:${options.profileId}`,
       );
-      if (!value) return null;
-
-      // Backward compat: old keys stored full JSON, new keys store just the sessionId
-      if (value.startsWith('{')) {
-        return getSafeJson<IClickhouseSession>(value);
-      }
-
-      hit = await this.redis.get(`session:${value}`);
     }
 
     if (hit) {
@@ -61,7 +54,7 @@ export class SessionBuffer extends BaseBuffer {
   }
 
   async getSession(
-    event: IClickhouseEvent
+    event: IClickhouseEvent,
   ): Promise<[IClickhouseSession] | [IClickhouseSession, IClickhouseSession]> {
     const existingSession = await this.getExistingSession({
       sessionId: event.session_id,
@@ -102,6 +95,7 @@ export class SessionBuffer extends BaseBuffer {
       newSession.revenue = (newSession.revenue ?? 0) + addedRevenue;
 
       if (event.name === 'screen_view' && event.path) {
+        newSession.screen_views.push(event.path);
         newSession.screen_view_count += 1;
       } else {
         newSession.event_count += 1;
@@ -116,12 +110,6 @@ export class SessionBuffer extends BaseBuffer {
         newSession.profile_id = event.profile_id;
       }
 
-      if (event.groups) {
-        newSession.groups = [
-          ...new Set([...(newSession.groups ?? []), ...event.groups]),
-        ];
-      }
-
       return [newSession, oldSession];
     }
 
@@ -132,11 +120,11 @@ export class SessionBuffer extends BaseBuffer {
         profile_id: event.profile_id,
         project_id: event.project_id,
         device_id: event.device_id,
-        groups: event.groups,
         created_at: event.created_at,
         ended_at: event.created_at,
         event_count: event.name === 'screen_view' ? 0 : 1,
         screen_view_count: event.name === 'screen_view' ? 1 : 0,
+        screen_views: event.name === 'screen_view' ? [event.path] : [],
         entry_path: event.path,
         entry_origin: event.origin,
         exit_path: event.path,
@@ -198,14 +186,14 @@ export class SessionBuffer extends BaseBuffer {
         `session:${newSession.id}`,
         JSON.stringify(newSession),
         'EX',
-        60 * 60
+        60 * 60,
       );
       if (newSession.profile_id) {
         multi.set(
           `session:${newSession.project_id}:${newSession.profile_id}`,
-          newSession.id,
+          JSON.stringify(newSession),
           'EX',
-          60 * 60
+          60 * 60,
         );
       }
       for (const session of sessions) {
@@ -222,7 +210,7 @@ export class SessionBuffer extends BaseBuffer {
         await this.tryFlush();
       }
     } catch (error) {
-      this.logger.error('Failed to add session', { error });
+      this.logger.error('Failed to add bot event', { error });
     }
   }
 
@@ -232,12 +220,10 @@ export class SessionBuffer extends BaseBuffer {
       const events = await this.redis.lrange(
         this.redisKey,
         0,
-        this.batchSize - 1
+        this.batchSize - 1,
       );
 
-      if (events.length === 0) {
-        return;
-      }
+      if (events.length === 0) return;
 
       const sessions = events
         .map((e) => getSafeJson<IClickhouseSession>(e))
@@ -272,7 +258,7 @@ export class SessionBuffer extends BaseBuffer {
     }
   }
 
-  getBufferSize() {
+  async getBufferSize() {
     return this.getBufferSizeWithCounter(() => this.redis.llen(this.redisKey));
   }
 }

@@ -1,10 +1,9 @@
 import type { Job } from 'bullmq';
 
-import { eventBuffer, groupBuffer, profileBackfillBuffer, profileBuffer, replayBuffer, sessionBuffer } from '@openpanel/db';
+import { eventBuffer, profileBackfillBuffer, profileBuffer, sessionBuffer } from '@openpanel/db';
 import type { CronQueuePayload } from '@openpanel/queue';
 
 import { jobdeleteProjects } from './cron.delete-projects';
-import { gscSyncAllJob } from './gsc';
 import { onboardingJob } from './cron.onboarding';
 import { ping } from './cron.ping';
 import { salt } from './cron.salt';
@@ -27,12 +26,6 @@ export async function cronJob(job: Job<CronQueuePayload>) {
     case 'flushProfileBackfill': {
       return await profileBackfillBuffer.tryFlush();
     }
-    case 'flushReplay': {
-      return await replayBuffer.tryFlush();
-    }
-    case 'flushGroups': {
-      return await groupBuffer.tryFlush();
-    }
     case 'ping': {
       return await ping();
     }
@@ -44,9 +37,6 @@ export async function cronJob(job: Job<CronQueuePayload>) {
     }
     case 'onboarding': {
       return await onboardingJob(job);
-    }
-    case 'gscSync': {
-      return await gscSyncAllJob();
     }
   }
 }

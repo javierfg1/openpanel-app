@@ -1,5 +1,6 @@
-// biome-ignore lint/performance/noBarrelFile: lazy
-export { DateTime } from 'luxon';
+import { DateTime } from 'luxon';
+
+export { DateTime };
 
 export function getTime(date: string | number | Date) {
   return new Date(date).getTime();

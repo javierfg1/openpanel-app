@@ -3,10 +3,8 @@ import { useNumber } from '@/hooks/use-numer-formatter';
 import type { RouterOutputs } from '@/trpc/client';
 import { cn } from '@/utils/cn';
 import { getChartColor } from '@/utils/theme';
-import { getPreviousMetric } from '@openpanel/common';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import { PreviousDiffIndicatorPure } from '../common/previous-diff-indicator';
 import { Tables } from './chart';
 
 interface BreakdownListProps {
@@ -50,9 +48,10 @@ export function BreakdownList({
     });
   };
 
-  // Get the stable color index for a breakdown (position in full list, matches chart)
-  const getStableColorIndex = (id: string) => {
-    return allBreakdowns.findIndex((b) => b.id === id);
+  // Get the color index for a breakdown based on its position in the
+  // visible series list (so colors match the chart bars)
+  const getVisibleIndex = (id: string) => {
+    return visibleSeriesIds.indexOf(id);
   };
 
   if (allBreakdowns.length === 0) {
@@ -82,12 +81,14 @@ export function BreakdownList({
       {allBreakdowns.map((item, index) => {
         const isExpanded = expandedIds.has(item.id);
         const isVisible = visibleSeriesIds.includes(item.id);
-        const stableColorIndex = getStableColorIndex(item.id);
+        const visibleIndex = getVisibleIndex(item.id);
         const previousItem = previousData[index] ?? null;
         const hasBreakdownName =
           item.breakdowns && item.breakdowns.length > 0;
         const color =
-          stableColorIndex >= 0 ? getChartColor(stableColorIndex) : undefined;
+          isVisible && visibleIndex !== -1
+            ? getChartColor(visibleIndex)
+            : undefined;
 
         return (
           <div key={item.id} className="col">
@@ -106,7 +107,7 @@ export function BreakdownList({
                   className="shrink-0"
                   style={{
                     borderColor: color,
-                    backgroundColor: isVisible && color ? color : 'transparent',
+                    backgroundColor: isVisible ? color : 'transparent',
                   }}
                 />
               )}
@@ -140,14 +141,6 @@ export function BreakdownList({
                       '%',
                     )}
                   </div>
-                  {previousItem && (
-                    <PreviousDiffIndicatorPure
-                      {...getPreviousMetric(
-                        item.lastStep.percent,
-                        previousItem.lastStep.percent,
-                      )}
-                    />
-                  )}
                 </div>
                 <div className="text-right row gap-2 items-center">
                   <div className="text-muted-foreground text-sm">
@@ -156,14 +149,6 @@ export function BreakdownList({
                   <div className="font-mono font-semibold text-sm">
                     {number.format(item.lastStep.count)}
                   </div>
-                  {previousItem && (
-                    <PreviousDiffIndicatorPure
-                      {...getPreviousMetric(
-                        item.lastStep.count,
-                        previousItem.lastStep.count,
-                      )}
-                    />
-                  )}
                 </div>
               </div>
             </div>
@@ -175,7 +160,6 @@ export function BreakdownList({
                   current: item,
                   previous: previousItem,
                 }}
-                noTopBorderRadius
               />
             )}
           </div>

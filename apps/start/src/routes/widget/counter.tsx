@@ -1,11 +1,12 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import { z } from 'zod';
 import { AnimatedNumber } from '@/components/animated-number';
 import { Ping } from '@/components/ping';
+import { useNumber } from '@/hooks/use-numer-formatter';
 import useWS from '@/hooks/use-ws';
 import { useTRPC } from '@/integrations/trpc/react';
 import type { RouterOutputs } from '@/trpc/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { createFileRoute } from '@tanstack/react-router';
+import { z } from 'zod';
 
 const widgetSearchSchema = z.object({
   shareId: z.string(),
@@ -19,33 +20,33 @@ export const Route = createFileRoute('/widget/counter')({
 });
 
 function RouteComponent() {
-  const { shareId } = Route.useSearch();
+  const { shareId, limit, color } = Route.useSearch();
   const trpc = useTRPC();
 
   // Fetch widget data
   const { data, isLoading } = useQuery(
-    trpc.widget.counter.queryOptions({ shareId })
+    trpc.widget.counter.queryOptions({ shareId }),
   );
 
   if (isLoading) {
     return (
-      <div className="flex h-8 items-center gap-2 px-2">
+      <div className="flex items-center gap-2 px-2 h-8">
         <Ping />
-        <AnimatedNumber suffix=" unique visitors" value={0} />
+        <AnimatedNumber value={0} suffix=" unique visitors" />
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="flex h-8 items-center gap-2 px-2">
+      <div className="flex items-center gap-2 px-2 h-8">
         <Ping className="bg-orange-500" />
-        <AnimatedNumber suffix=" unique visitors" value={0} />
+        <AnimatedNumber value={0} suffix=" unique visitors" />
       </div>
     );
   }
 
-  return <CounterWidget data={data} shareId={shareId} />;
+  return <CounterWidget shareId={shareId} data={data} />;
 }
 
 interface RealtimeWidgetProps {
@@ -56,29 +57,30 @@ interface RealtimeWidgetProps {
 function CounterWidget({ shareId, data }: RealtimeWidgetProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const number = useNumber();
 
   // WebSocket subscription for real-time updates
   useWS<number>(
     `/live/visitors/${data.projectId}`,
-    () => {
+    (res) => {
       if (!document.hidden) {
         queryClient.refetchQueries(
-          trpc.widget.counter.queryFilter({ shareId })
+          trpc.widget.counter.queryFilter({ shareId }),
         );
       }
     },
     {
       debounce: {
         delay: 1000,
-        maxWait: 60_000,
+        maxWait: 60000,
       },
-    }
+    },
   );
 
   return (
-    <div className="flex h-8 items-center gap-2 px-2">
+    <div className="flex items-center gap-2 px-2 h-8">
       <Ping />
-      <AnimatedNumber suffix=" unique visitors" value={data.counter} />
+      <AnimatedNumber value={data.counter} suffix=" unique visitors" />
     </div>
   );
 }

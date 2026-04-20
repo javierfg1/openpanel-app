@@ -22,7 +22,6 @@ export interface DataTableProps<TData> {
     title: string;
     description: string;
   };
-  onRowClick?: (row: import('@tanstack/react-table').Row<TData>) => void;
 }
 
 declare module '@tanstack/react-table' {
@@ -36,7 +35,6 @@ export function DataTable<TData>({
   table,
   loading,
   className,
-  onRowClick,
   empty = {
     title: 'No data',
     description: 'We could not find any data here yet',
@@ -80,8 +78,6 @@ export function DataTable<TData>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={onRowClick ? 'cursor-pointer' : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell

@@ -1,11 +1,8 @@
-import { useAppParams } from '@/hooks/use-app-params';
 import { useEventQueryFilters } from '@/hooks/use-event-query-filters';
-import { eventQueryFiltersParser } from '@/hooks/use-event-query-filters';
 import { useMemo, useState } from 'react';
 
 import { useTRPC } from '@/integrations/trpc/react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import { Widget, WidgetBody } from '../widget';
 import { WidgetFooter, WidgetHeadSearchable } from './overview-widget';
 import {
@@ -26,9 +23,7 @@ export default function OverviewTopEvents({
   shareId,
 }: OverviewTopEventsProps) {
   const { range, startDate, endDate } = useOverviewOptions();
-  const [filters] = useEventQueryFilters();
-  const { organizationId } = useAppParams();
-  const navigate = useNavigate();
+  const [filters, setFilter] = useEventQueryFilters();
   const trpc = useTRPC();
   const { data: conversions } = useQuery(
     trpc.overview.topConversions.queryOptions({ projectId, shareId }),
@@ -167,23 +162,11 @@ export default function OverviewTopEvents({
             <OverviewWidgetTableEvents
               data={filteredData}
               onItemClick={(name) => {
-                const filterName =
-                  widget.meta?.type === 'linkOut'
-                    ? 'properties.href'
-                    : 'name';
-                const f = eventQueryFiltersParser.serialize([
-                  {
-                    id: filterName,
-                    name: filterName,
-                    operator: 'is',
-                    value: [name],
-                  },
-                ]);
-                navigate({
-                  to: '/$organizationId/$projectId/events/events',
-                  params: { organizationId, projectId },
-                  search: { f },
-                });
+                if (widget.meta?.type === 'linkOut') {
+                  setFilter('properties.href', name);
+                } else {
+                  setFilter('name', name);
+                }
               }}
             />
           )}

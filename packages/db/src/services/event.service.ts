@@ -32,14 +32,14 @@ export type IImportedEvent = Omit<
   properties: Record<string, unknown>;
 };
 
-export interface IServicePage {
+export type IServicePage = {
   path: string;
   count: number;
   project_id: string;
   first_seen: string;
   title: string;
   origin: string;
-}
+};
 
 export interface IClickhouseBotEvent {
   id: string;
@@ -92,7 +92,6 @@ export interface IClickhouseEvent {
   sdk_name: string;
   sdk_version: string;
   revenue?: number;
-  groups: string[];
 
   // They do not exist here. Just make ts happy for now
   profile?: IServiceProfile;
@@ -144,7 +143,6 @@ export function transformSessionToEvent(
     importedAt: undefined,
     sdkName: undefined,
     sdkVersion: undefined,
-    groups: [],
   };
 }
 
@@ -170,6 +168,7 @@ export function transformEvent(event: IClickhouseEvent): IServiceEvent {
     device: event.device,
     brand: event.brand,
     model: event.model,
+    duration: event.duration,
     path: event.path,
     origin: event.origin,
     referrer: event.referrer,
@@ -181,7 +180,6 @@ export function transformEvent(event: IClickhouseEvent): IServiceEvent {
     sdkVersion: event.sdk_version,
     profile: event.profile,
     revenue: event.revenue,
-    groups: event.groups ?? [],
   };
 }
 
@@ -218,7 +216,7 @@ export interface IServiceEvent {
   device?: string | undefined;
   brand?: string | undefined;
   model?: string | undefined;
-  duration?: number;
+  duration: number;
   path: string;
   origin: string;
   referrer: string | undefined;
@@ -230,7 +228,6 @@ export interface IServiceEvent {
   sdkName: string | undefined;
   sdkVersion: string | undefined;
   revenue?: number;
-  groups: string[];
 }
 
 type SelectHelper<T> = {
@@ -250,7 +247,7 @@ export interface IServiceEventMinimal {
   browser?: string | undefined;
   device?: string | undefined;
   brand?: string | undefined;
-  duration?: number;
+  duration: number;
   path: string;
   origin: string;
   referrer: string | undefined;
@@ -335,7 +332,6 @@ export async function getEvents(
         projectId,
         isExternal: false,
         properties: {},
-        groups: [],
       };
     }
   }
@@ -383,7 +379,7 @@ export async function createEvent(payload: IServiceCreateEventPayload) {
     device: payload.device ?? '',
     brand: payload.brand ?? '',
     model: payload.model ?? '',
-    duration: payload.duration ?? 0,
+    duration: payload.duration,
     referrer: payload.referrer ?? '',
     referrer_name: payload.referrerName ?? '',
     referrer_type: payload.referrerType ?? '',
@@ -391,7 +387,6 @@ export async function createEvent(payload: IServiceCreateEventPayload) {
     sdk_name: payload.sdkName ?? '',
     sdk_version: payload.sdkVersion ?? '',
     revenue: payload.revenue,
-    groups: payload.groups ?? [],
   };
 
   const promises = [sessionBuffer.add(event), eventBuffer.add(event)];
@@ -440,7 +435,6 @@ export interface GetEventListOptions {
   projectId: string;
   profileId?: string;
   sessionId?: string;
-  groupId?: string;
   take: number;
   cursor?: number | Date;
   events?: string[] | null;
@@ -459,7 +453,6 @@ export async function getEventList(options: GetEventListOptions) {
     projectId,
     profileId,
     sessionId,
-    groupId,
     events,
     filters,
     startDate,
@@ -484,7 +477,7 @@ export async function getEventList(options: GetEventListOptions) {
     sb.where.cursor = `created_at < ${sqlstring.escape(formatClickhouseDate(cursor))}`;
   }
 
-  if (!(cursor || (startDate && endDate))) {
+  if (!cursor) {
     sb.where.cursorWindow = `created_at >= toDateTime64(${sqlstring.escape(formatClickhouseDate(new Date()))}, 3) - INTERVAL ${safeDateIntervalInDays} DAY`;
   }
 
@@ -569,6 +562,9 @@ export async function getEventList(options: GetEventListOptions) {
   if (select.model) {
     sb.select.model = 'model';
   }
+  if (select.duration) {
+    sb.select.duration = 'duration';
+  }
   if (select.path) {
     sb.select.path = 'path';
   }
@@ -597,20 +593,12 @@ export async function getEventList(options: GetEventListOptions) {
     sb.select.revenue = 'revenue';
   }
 
-  if (select.groups) {
-    sb.select.groups = 'groups';
-  }
-
   if (profileId) {
     sb.where.deviceId = `(device_id IN (SELECT device_id as did FROM ${TABLE_NAMES.events} WHERE project_id = ${sqlstring.escape(projectId)} AND device_id != '' AND profile_id = ${sqlstring.escape(profileId)} group by did) OR profile_id = ${sqlstring.escape(profileId)})`;
   }
 
   if (sessionId) {
     sb.where.sessionId = `session_id = ${sqlstring.escape(sessionId)}`;
-  }
-
-  if (groupId) {
-    sb.where.groupId = `has(groups, ${sqlstring.escape(groupId)})`;
   }
 
   if (startDate && endDate) {
@@ -627,7 +615,7 @@ export async function getEventList(options: GetEventListOptions) {
   if (filters) {
     sb.where = {
       ...sb.where,
-      ...getEventFiltersWhereClause(filters, projectId),
+      ...getEventFiltersWhereClause(filters),
     };
 
     // Join profiles table if any filter uses profile fields
@@ -638,16 +626,9 @@ export async function getEventList(options: GetEventListOptions) {
     if (profileFilters.length > 0) {
       sb.joins.profiles = `LEFT ANY JOIN (SELECT id, ${uniq(profileFilters.map((f) => f.split('.')[0])).join(', ')} FROM ${TABLE_NAMES.profiles} FINAL WHERE project_id = ${sqlstring.escape(projectId)}) as profile on profile.id = profile_id`;
     }
-
-    // Join groups table if any filter uses group fields
-    const groupFilters = filters.filter((f) => f.name.startsWith('group.'));
-    if (groupFilters.length > 0) {
-      sb.joins.groups = 'ARRAY JOIN groups AS _group_id';
-      sb.joins.groups_cte = `LEFT ANY JOIN (SELECT id, name, type, properties FROM ${TABLE_NAMES.groups} FINAL WHERE project_id = ${sqlstring.escape(projectId)}) AS _g ON _g.id = _group_id`;
-    }
   }
 
-  sb.orderBy.created_at = 'created_at DESC, id ASC';
+  sb.orderBy.created_at = 'created_at DESC';
 
   if (custom) {
     custom(sb);
@@ -673,10 +654,10 @@ export async function getEventList(options: GetEventListOptions) {
   return data;
 }
 
+export const getEventsCountCached = cacheable(getEventsCount, 60 * 10);
 export async function getEventsCount({
   projectId,
   profileId,
-  groupId,
   events,
   filters,
   startDate,
@@ -686,10 +667,6 @@ export async function getEventsCount({
   sb.where.projectId = `project_id = ${sqlstring.escape(projectId)}`;
   if (profileId) {
     sb.where.profileId = `profile_id = ${sqlstring.escape(profileId)}`;
-  }
-
-  if (groupId) {
-    sb.where.groupId = `has(groups, ${sqlstring.escape(groupId)})`;
   }
 
   if (startDate && endDate) {
@@ -706,7 +683,7 @@ export async function getEventsCount({
   if (filters) {
     sb.where = {
       ...sb.where,
-      ...getEventFiltersWhereClause(filters, projectId),
+      ...getEventFiltersWhereClause(filters),
     };
 
     // Join profiles table if any filter uses profile fields
@@ -716,13 +693,6 @@ export async function getEventsCount({
 
     if (profileFilters.length > 0) {
       sb.joins.profiles = `LEFT ANY JOIN (SELECT id, ${uniq(profileFilters.map((f) => f.split('.')[0])).join(', ')} FROM ${TABLE_NAMES.profiles} FINAL WHERE project_id = ${sqlstring.escape(projectId)}) as profile on profile.id = profile_id`;
-    }
-
-    // Join groups table if any filter uses group fields
-    const groupFilters = filters.filter((f) => f.name.startsWith('group.'));
-    if (groupFilters.length > 0) {
-      sb.joins.groups = 'ARRAY JOIN groups AS _group_id';
-      sb.joins.groups_cte = `LEFT ANY JOIN (SELECT id, name, type, properties FROM ${TABLE_NAMES.groups} FINAL WHERE project_id = ${sqlstring.escape(projectId)}) AS _g ON _g.id = _group_id`;
     }
   }
 
@@ -802,6 +772,7 @@ class EventService {
     where,
     select,
     limit,
+    orderBy,
     filters,
   }: {
     projectId: string;
@@ -841,6 +812,7 @@ class EventService {
         select.event.deviceId && 'e.device_id as device_id',
         select.event.name && 'e.name as name',
         select.event.path && 'e.path as path',
+        select.event.duration && 'e.duration as duration',
         select.event.country && 'e.country as country',
         select.event.city && 'e.city as city',
         select.event.os && 'e.os as os',
@@ -925,6 +897,7 @@ class EventService {
         select.event.deviceId && 'e.device_id as device_id',
         select.event.name && 'e.name as name',
         select.event.path && 'e.path as path',
+        select.event.duration && 'e.duration as duration',
         select.event.country && 'e.country as country',
         select.event.city && 'e.city as city',
         select.event.os && 'e.os as os',
@@ -1060,6 +1033,7 @@ class EventService {
           id: true,
           name: true,
           createdAt: true,
+          duration: true,
           country: true,
           city: true,
           os: true,
@@ -1087,19 +1061,8 @@ class EventService {
           }
           if (filters) {
             q.rawWhere(
-              Object.values(
-                getEventFiltersWhereClause(filters, projectId)
-              ).join(' AND ')
+              Object.values(getEventFiltersWhereClause(filters)).join(' AND ')
             );
-            const groupFilters = filters.filter((f) =>
-              f.name.startsWith('group.')
-            );
-            if (groupFilters.length > 0) {
-              q.rawJoin('ARRAY JOIN groups AS _group_id');
-              q.rawJoin(
-                `LEFT ANY JOIN (SELECT id, name, type, properties FROM ${TABLE_NAMES.groups} FINAL WHERE project_id = ${sqlstring.escape(projectId)}) AS _g ON _g.id = _group_id`
-              );
-            }
           }
         },
         session: (q) => {
@@ -1138,182 +1101,3 @@ class EventService {
 }
 
 export const eventService = new EventService(ch);
-
-import { getCache } from '@openpanel/redis';
-import { resolveDateRange } from './date.service';
-
-export async function getTopEventNames(projectId: string): Promise<string[]> {
-  return getCache(`mcp:event-names:${projectId}`, 60 * 10, async () => {
-    const rows = await clix(ch)
-      .select<IClickhouseEvent>(['name', 'count() as count'])
-      .from(TABLE_NAMES.event_names_mv)
-      .where('project_id', '=', projectId)
-      .groupBy(['name'])
-      .orderBy('count', 'DESC')
-      .limit(50)
-      .execute();
-
-    return rows.map((r) => r.name);
-  });
-}
-
-export const listEventNamesCore = (projectId: string): Promise<string[]> =>
-  getTopEventNames(projectId);
-
-export async function listEventPropertiesCore(input: {
-  projectId: string;
-  eventName?: string;
-}): Promise<{ properties: Array<{ property_key: string; event_name: string }> }> {
-  const builder = clix(ch)
-    .select<{ property_key: string; event_name: string }>([
-      'distinct property_key',
-      'name as event_name',
-    ])
-    .from(TABLE_NAMES.event_property_values_mv)
-    .where('project_id', '=', input.projectId)
-    .orderBy('property_key', 'ASC')
-    .limit(500);
-
-  if (input.eventName) {
-    builder.where('name', '=', input.eventName);
-  }
-
-  const rows = await builder.execute();
-  return { properties: rows };
-}
-
-export async function getEventPropertyValuesCore(input: {
-  projectId: string;
-  eventName: string;
-  propertyKey: string;
-}): Promise<{ event: string; property: string; values: string[] }> {
-  const rows = await clix(ch)
-    .select<{ value: string }>(['property_value as value'])
-    .from(TABLE_NAMES.event_property_values_mv)
-    .where('project_id', '=', input.projectId)
-    .where('name', '=', input.eventName)
-    .where('property_key', '=', input.propertyKey)
-    .orderBy('created_at', 'DESC')
-    .limit(200)
-    .execute();
-
-  return {
-    event: input.eventName,
-    property: input.propertyKey,
-    values: rows.map((r) => r.value),
-  };
-}
-
-export interface QueryEventsInput {
-  projectId: string;
-  startDate?: string;
-  endDate?: string;
-  eventNames?: string[];
-  path?: string;
-  country?: string;
-  city?: string;
-  device?: string;
-  browser?: string;
-  os?: string;
-  referrer?: string;
-  referrerName?: string;
-  referrerType?: string;
-  sessionId?: string;
-  profileId?: string;
-  profileIds?: string[];
-  properties?: Record<string, string>;
-  limit?: number;
-}
-
-export async function queryEventsCore(
-  input: QueryEventsInput,
-): Promise<IClickhouseEvent[]> {
-  const builder = clix(ch)
-    .select<IClickhouseEvent>([])
-    .from(TABLE_NAMES.events)
-    .where('project_id', '=', input.projectId);
-
-  if (input.sessionId) {
-    builder.where('session_id', '=', input.sessionId);
-  }
-
-  if (input.profileId) {
-    builder.where('profile_id', '=', input.profileId);
-  }
-
-  if (input.profileIds?.length) {
-    builder.where('profile_id', 'IN', input.profileIds);
-  }
-
-  if (input.eventNames?.length) {
-    builder.where('name', 'IN', input.eventNames);
-  }
-
-  if (input.path) {
-    builder.where('path', '=', input.path);
-  }
-
-  if (input.referrer) {
-    builder.where('referrer', '=', input.referrer);
-  }
-
-  if (input.referrerName) {
-    builder.where('referrer_name', '=', input.referrerName);
-  }
-
-  if (input.referrerType) {
-    builder.where('referrer_type', '=', input.referrerType);
-  }
-
-  if (input.device) {
-    builder.where('device', '=', input.device);
-  }
-
-  if (input.country) {
-    builder.where('country', '=', input.country);
-  }
-
-  if (input.city) {
-    builder.where('city', '=', input.city);
-  }
-
-  if (input.os) {
-    builder.where('os', '=', input.os);
-  }
-
-  if (input.browser) {
-    builder.where('browser', '=', input.browser);
-  }
-
-  if (input.properties) {
-    for (const [key, value] of Object.entries(input.properties)) {
-      builder.rawWhere(`properties[${sqlstring.escape(key)}] = ${sqlstring.escape(value)}`);
-    }
-  }
-
-  // Skip the default 30-day date filter when sessionId is set — a
-  // session id is unique and narrow enough to query directly. Without
-  // this, an older session's events would be silently excluded.
-  if (!input.sessionId) {
-    const { startDate: start, endDate: end } = resolveDateRange(
-      input.startDate,
-      input.endDate,
-    );
-    builder.where('created_at', 'BETWEEN', [
-      clix.datetime(start),
-      clix.datetime(end),
-    ]);
-  } else if (input.startDate || input.endDate) {
-    // If caller still wants to scope by date, honor it.
-    const { startDate: start, endDate: end } = resolveDateRange(
-      input.startDate,
-      input.endDate,
-    );
-    builder.where('created_at', 'BETWEEN', [
-      clix.datetime(start),
-      clix.datetime(end),
-    ]);
-  }
-
-  return builder.limit(input.limit ?? 20).execute();
-}

@@ -14,11 +14,17 @@ const RealtimeReloader = ({ projectId }: Props) => {
     `/live/events/${projectId}`,
     () => {
       if (!document.hidden) {
-        // pathFilter() covers all realtime.* queries for this project
         client.refetchQueries(trpc.realtime.pathFilter());
         client.refetchQueries(
           trpc.overview.liveData.queryFilter({ projectId }),
         );
+        client.refetchQueries(
+          trpc.realtime.activeSessions.queryFilter({ projectId }),
+        );
+        client.refetchQueries(
+          trpc.realtime.referrals.queryFilter({ projectId }),
+        );
+        client.refetchQueries(trpc.realtime.paths.queryFilter({ projectId }));
       }
     },
     {

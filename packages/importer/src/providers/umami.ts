@@ -2,13 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createBrotliDecompress, createGunzip } from 'node:zlib';
-import { isSameDomain, parsePath, toDots } from '@openpanel/common';
-import {
-  generateDeviceId,
-  getReferrerWithQuery,
-  parseReferrer,
-} from '@openpanel/common/server';
-import { formatClickhouseDate, type IClickhouseEvent } from '@openpanel/db';
+import { isSameDomain, parsePath } from '@openpanel/common';
+import { generateDeviceId } from '@openpanel/common/server';
+import { getReferrerWithQuery, parseReferrer } from '@openpanel/common/server';
+import type { IClickhouseEvent } from '@openpanel/db';
 import type { ILogger } from '@openpanel/logger';
 import type { IUmamiImportConfig } from '@openpanel/validation';
 import { parse } from 'csv-parse';
@@ -66,7 +63,7 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
   constructor(
     private readonly projectId: string,
     private readonly config: IUmamiImportConfig,
-    private readonly logger?: ILogger
+    private readonly logger?: ILogger,
   ) {
     super();
   }
@@ -85,7 +82,7 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
       signal?: AbortSignal;
       maxBytes?: number;
       maxRows?: number;
-    } = {}
+    } = {},
   ): AsyncGenerator<UmamiRawEvent, void, unknown> {
     const { signal, maxBytes, maxRows } = opts;
     const controller = new AbortController();
@@ -98,9 +95,9 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
     }
 
     const res = await fetch(url, { signal: controller.signal });
-    if (!(res.ok && res.body)) {
+    if (!res.ok || !res.body) {
       throw new Error(
-        `Failed to fetch remote file: ${res.status} ${res.statusText}`
+        `Failed to fetch remote file: ${res.status} ${res.statusText}`,
       );
     }
 
@@ -111,15 +108,15 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
     if (
       contentType &&
       !/text\/csv|text\/plain|application\/gzip|application\/octet-stream/i.test(
-        contentType
+        contentType,
       )
     ) {
-      this.logger?.warn(`Warning: Content-Type is ${contentType}, expected CSV-ish`);
+      console.warn(`Warning: Content-Type is ${contentType}, expected CSV-ish`);
     }
 
     if (maxBytes && contentLen && contentLen > maxBytes) {
       throw new Error(
-        `Remote file exceeds size limit (${contentLen} > ${maxBytes})`
+        `Remote file exceeds size limit (${contentLen} > ${maxBytes})`,
       );
     }
 
@@ -140,7 +137,9 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
         if (seenBytes > maxBytes) {
           controller.abort();
           body.destroy(
-            new Error(`Stream exceeded size limit (${seenBytes} > ${maxBytes})`)
+            new Error(
+              `Stream exceeded size limit (${seenBytes} > ${maxBytes})`,
+            ),
           );
         }
       });
@@ -191,7 +190,7 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
       throw new Error(
         `Failed to parse remote file from ${url}: ${
           err instanceof Error ? err.message : String(err)
-        }`
+        }`,
       );
     } finally {
       controller.abort(); // ensure fetch stream is torn down
@@ -206,7 +205,7 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
   transformEvent(_rawEvent: UmamiRawEvent): IClickhouseEvent {
     const projectId =
       this.config.projectMapper.find(
-        (mapper) => mapper.from === _rawEvent.website_id
+        (mapper) => mapper.from === _rawEvent.website_id,
       )?.to || this.projectId;
 
     const rawEvent = zUmamiRawEvent.parse(_rawEvent);
@@ -262,50 +261,39 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
     }
 
     // Add useful properties from Umami data
-    if (rawEvent.page_title) {
-      properties.__title = rawEvent.page_title;
-    }
-    if (rawEvent.screen) {
-      properties.__screen = rawEvent.screen;
-    }
-    if (rawEvent.language) {
-      properties.__language = rawEvent.language;
-    }
-    if (rawEvent.utm_source) {
+    if (rawEvent.page_title) properties.__title = rawEvent.page_title;
+    if (rawEvent.screen) properties.__screen = rawEvent.screen;
+    if (rawEvent.language) properties.__language = rawEvent.language;
+    if (rawEvent.utm_source)
       properties = assocPath(
         ['__query', 'utm_source'],
         rawEvent.utm_source,
-        properties
+        properties,
       );
-    }
-    if (rawEvent.utm_medium) {
+    if (rawEvent.utm_medium)
       properties = assocPath(
         ['__query', 'utm_medium'],
         rawEvent.utm_medium,
-        properties
+        properties,
       );
-    }
-    if (rawEvent.utm_campaign) {
+    if (rawEvent.utm_campaign)
       properties = assocPath(
         ['__query', 'utm_campaign'],
         rawEvent.utm_campaign,
-        properties
+        properties,
       );
-    }
-    if (rawEvent.utm_content) {
+    if (rawEvent.utm_content)
       properties = assocPath(
         ['__query', 'utm_content'],
         rawEvent.utm_content,
-        properties
+        properties,
       );
-    }
-    if (rawEvent.utm_term) {
+    if (rawEvent.utm_term)
       properties = assocPath(
         ['__query', 'utm_term'],
         rawEvent.utm_term,
-        properties
+        properties,
       );
-    }
 
     return {
       id: rawEvent.event_id || randomUUID(),
@@ -314,8 +302,8 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
       profile_id: profileId,
       project_id: projectId,
       session_id: rawEvent.session_id || '',
-      properties: toDots(properties),
-      created_at: formatClickhouseDate(rawEvent.created_at),
+      properties,
+      created_at: rawEvent.created_at.toISOString(),
       country,
       city,
       region: this.mapRegion(region),
@@ -337,12 +325,11 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
       imported_at: new Date().toISOString(),
       sdk_name: this.provider,
       sdk_version: this.version,
-      groups: [],
     };
   }
 
   mapRegion(region: string): string {
-    return region.replace(/^[A-Z]{2}-/, '');
+    return region.replace(/^[A-Z]{2}\-/, '');
   }
 
   mapDevice(device: string): string {

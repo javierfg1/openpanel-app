@@ -14,9 +14,7 @@ type ExposedMethodsNames =
   | 'clearRevenue'
   | 'pendingRevenue'
   | 'screenView'
-  | 'fetchDeviceId'
-  | 'getDeviceId'
-  | 'getSessionId';
+  | 'fetchDeviceId';
 
 export type ExposedMethods = {
   [K in ExposedMethodsNames]: OpenPanel[K] extends (...args: any[]) => any
@@ -40,7 +38,7 @@ type OpenPanelMethodSignatures = {
 } & {
   screenView(
     pathOrProperties?: string | TrackProperties,
-    properties?: TrackProperties
+    properties?: TrackProperties,
   ): void;
 };
 

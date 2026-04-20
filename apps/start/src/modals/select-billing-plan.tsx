@@ -217,9 +217,9 @@ export default function SelectBillingPlan({
   };
 
   return (
-    <ModalContent className="!flex !flex-col !overflow-hidden">
+    <ModalContent>
       <ModalHeader title="Select a billing plan" />
-      <div className="col gap-4 shrink-0">
+      <div className="col gap-4">
         {currentProduct && (
           <div className="font-medium">
             Your current usage is{' '}
@@ -257,7 +257,7 @@ export default function SelectBillingPlan({
           </Button>
         </div>
       </div>
-      <div className="col divide-y divide-border border rounded-lg overflow-y-auto min-h-0">
+      <div className="col divide-y divide-border border rounded-lg overflow-hidden">
         {products
           .filter((product) =>
             product.prices.some((p) => p.amountType !== 'free'),
@@ -282,7 +282,7 @@ export default function SelectBillingPlan({
                 type="button"
                 disabled={isProductDisabled}
                 className={cn(
-                  'row justify-between p-4 py-3 hover:bg-def-100 shrink-0',
+                  'row justify-between p-4 py-3 hover:bg-def-100',
                   currentProduct?.id === product.id &&
                     selectedProductId !== product.id &&
                     'text-muted-foreground line-through',
@@ -303,7 +303,7 @@ export default function SelectBillingPlan({
             );
           })}
       </div>
-      <div className="shrink-0">{renderAction()}</div>
+      {renderAction()}
     </ModalContent>
   );
 }
