@@ -3,8 +3,9 @@ name: Docker OpenPanel Build and Push
 on:
   workflow_dispatch:
   push:
-    # Push de las dos ramas
+    # Push de las dos ramas.
     branches: [ "main", "staging" ]
+    # El workflow solo se ejecutará si se modifica alguno de los archivos que están en paths.
     paths:
       - "apps/api/**"
       - "apps/worker/**"
@@ -16,11 +17,14 @@ on:
       - ".github/workflows/**"
 
 env:
-  repo_owner: "openpanel-dev"
+  repo_owner: "openpanel-app"
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    # Expone el resultado del filtro como variables booleanas, es decir, 
+    # podremos hacer buils selectivos porque sabremos que servicios han sido modificados (evita builds innecesarios).
+    # Ejemplo uso posterior --> needs.changes.outputs.api == 'true'
     outputs:
       api: ${{ steps.filter.outputs.api }}
       worker: ${{ steps.filter.outputs.worker }}
@@ -28,10 +32,13 @@ jobs:
       dashboard: ${{ steps.filter.outputs.dashboard }}
     steps:
       - uses: actions/checkout@v4
+      # Analiza los cambios del commit y decide que servicios han sido modificados
       - uses: dorny/paths-filter@v2
         id: filter
         with:
-          base: "main"
+          # Raa con la que comparar (main,staging) el commit actual
+          #base: "main"
+          base: "staging"
           filters: |
             api:
               - 'apps/api/**'
@@ -51,9 +58,11 @@ jobs:
               - '.github/workflows/**'
 
   lint-and-test:
+    # Este job depende del job "changes".
     needs: changes
     if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.public == 'true' || needs.changes.outputs.dashboard == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    # Levanta servicios Redis
     services:
       redis:
         image: redis:7-alpine
@@ -64,56 +73,86 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
+    # Preparar el entorno y deja lista la aplicación para:
+    #     Instalar dependencias
+    #     Generar código
+    #     Ejecutar lint / tests
     steps:
+      # Clona repositorio en el runner.
       - uses: actions/checkout@v4
 
+      # Requerido para ejecutar pnpm
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
+      # Instala la versión de pnpm que se indica en package.json
       - name: Install pnpm
         uses: pnpm/action-setup@v4
 
+      # Calcula dónde pnpm guarda dependencias y pone la ruta en STORE_PATH,
+      # que podrá ser referenciada posteriormente.
+      # (STORE_PATH se guarda en el archivo temporal GITHUB_ENV que se crea en el runner)
       - name: Get pnpm store directory
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
+      # Guarda dependencias entre ejecuciones.
       - name: Setup pnpm cache
         uses: actions/cache@v3
+        # Aceleramos el proceso de CI porque, si no cambia pnpm-lock.yaml, lo reutiliza.
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
+      # INstala apps, packages, dependencias internas.
       - name: Install dependencies
         run: pnpm install
 
+      # Generación de código automática antes de tests/build
+      # Los scripts están en package.json. En este caso, se ejecutará --> pnpm -r --filter db --filter geo run codegen
       - name: Codegen
         run: pnpm codegen
 
-      # - name: Run Biome
-      #   run: pnpm lint
+      # Ejecutamos el linter Biome para validar el estilo del código
+      - name: Run Biome
+        run: pnpm lint
 
-      # - name: Run TypeScript checks
-      #   run: pnpm typecheck
+      # Ejecuta --> pnpm -r --no-bail typecheck
+      # Ejecuta el script llamado "typecheck" que cada paquete tenga en su propio package.json. 
+      # Normalmente, ese script suele ser tsc --noEmit (comprobar tipos sin generar archivos .js).
+      - name: Run TypeScript checks
+        run: pnpm typecheck
 
-      # - name: Run tests
-      #   run: pnpm test
+      # Ejecuta --> vitest run
+      # Tests unitarios en test.ts
+      - name: Run tests
+        run: pnpm test
 
+  # Este job:
+  #   construye la imagen Docker del API
+  #   La sube a un registry (GHCR)
+  #   Etiqueta la versión
+  #   Solo se ejecuta si cambia el API
   build-and-push-api:
+    #Permisos necesarios para subir imágenes a registry y crear tags en git.
     permissions:
       packages: write
       contents: write
+    # Depende de los  jobs "changes" y "lint-and-test".
     needs: [changes, lint-and-test]
+    # Solo se ejecuta si se ha modificado api.
     if: ${{ needs.changes.outputs.api == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Se generan tags dinámicos, se guardan en GITHUB_OUTPUT, y se referencian como "steps.tags.outputs.branch_name".
       - name: Generate tags
         id: tags
         run: |
@@ -124,9 +163,13 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
+      # Habilita builds avanzados, cache, multi-platform
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # servicio de GitHub diseñado para alojar y gestionar imágenes de Docker (contenedores) directamente en tu cuenta 
+      # u organización, de forma similar a como lo hace Docker Hub.
+      # github.actor --> Variable automática del contexto de GitHub Actions. La define GitHub Actions.
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -134,6 +177,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # "context: ." indica que se usa todo el repositorio.
+      # Usa el DOckerfile de API.
+      # Genera tags trazables, únicos por commit.
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -147,6 +193,8 @@ jobs:
           build-args: |
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
+      # Actualiza el tag en la rama main paramarcar la última versión desplegada.
+      # Es necesario para integración con CD, es una referencia para ArgoCD.
       - name: Create/Update API tag
         if: github.ref == 'refs/heads/main'
         run: |
@@ -170,7 +218,7 @@ jobs:
       contents: write
     needs: [changes, lint-and-test]
     if: ${{ needs.changes.outputs.worker == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -231,7 +279,7 @@ jobs:
       contents: write
     needs: [changes, lint-and-test]
     if: ${{ needs.changes.outputs.dashboard == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
