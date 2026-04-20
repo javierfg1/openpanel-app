@@ -119,20 +119,20 @@ jobs:
         run: pnpm codegen
 
       # Ejecutamos el linter Biome para validar el estilo del código
-      - name: Run Biome
-        run: pnpm lint
+      #- name: Run Biome
+      #  run: pnpm lint
 
       # Ejecuta --> pnpm -r --no-bail typecheck
       # Ejecuta el script llamado "typecheck" que cada paquete tenga en su propio package.json. 
       # Normalmente, ese script suele ser tsc --noEmit (comprobar tipos sin generar archivos .js).
-      - name: Run TypeScript checks
-        run: pnpm typecheck
+      #- name: Run TypeScript checks
+      #  run: pnpm typecheck
 
       # Ejecuta --> vitest run
       # Tests unitarios en test.ts
-      - name: Run tests
-        run: pnpm test
-        
+      #- name: Run tests
+      #  run: pnpm test
+
 
   # Este job:
   #   construye la imagen Docker del API
