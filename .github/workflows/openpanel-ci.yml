@@ -17,7 +17,7 @@ on:
       - ".github/workflows/**"
 
 env:
-  repo_owner: "openpanel-app"
+  repo_owner: "javierfg1"
 
 jobs:
   changes:
@@ -198,7 +198,7 @@ jobs:
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
       # Actualiza el tag en la rama main paramarcar la última versión desplegada.
-      # En la propuesta, plantemao usar ArgoCD Image Updater, pero, de momento, dejamos la opción por defecto de3 este workflow
+      # En la propuesta, plantemao usar ArgoCD Image Updater, pero, de momento, dejamos la opción por defecto de este workflow
       # Es necesario para integración con CD, es una referencia para ArgoCD.
       - name: Create/Update API tag
         if: github.ref == 'refs/heads/main'
