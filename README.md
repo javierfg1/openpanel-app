@@ -119,6 +119,10 @@ You can now access the following:
 
 # openpanel-app
 
+### MOdificar KUBECONFIG al abrir nuevo terminal
+
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
 
 ### Creación secrets en github para el pipeline de ci
 
@@ -254,6 +258,24 @@ Current runner version: '2.333.1'
 # Ubicación obligatoria de los workflows para que los cambios sean detectados por el runner.
 
 /home/javi/DEVOPS/9_elgransalto/openpanel-repos/openpanel-app/.github/workflows
+
+# Error en ci --> discrepancia entre pnpm-lock.yaml y package.json
+
+Corregido un error en
+
+[javi@localhost openpanel-app]$ pnpm install --frozen-lockfile
+Scope: all 34 workspace projects
+ WARN  There are cyclic workspace dependencies: /home/javi/DEVOPS/9_elgransalto/openpanel-repos/openpanel-app/packages/db, /home/javi/DEVOPS/9_elgransalto/openpanel-repos/openpanel-app/packages/queue
+ ERR_PNPM_BROKEN_LOCKFILE  The lockfile at "/home/javi/DEVOPS/9_elgransalto/openpanel-repos/openpanel-app/pnpm-lock.yaml" is broken: can not read a block mapping entry; a multiline key may not be an implicit key (35007:17)
+
+ 35004 |       metro-cache: 0.80.6
+ 35005 |       metro-cache-key: 0.80.6
+ 35006 |       metro-config  80.6          -->  35006 |       metro-config  0.80.6
+ 35007 |       metro-core: 0.80.6
+-------------------------^
+ 35008 |       metro-file-map: 0.80.6
+ 35009 |       metro-resolver: 0.80.6
+
 
 
 

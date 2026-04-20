@@ -109,7 +109,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
-      # INstala apps, packages, dependencias internas.
+      # Instala apps, packages, dependencias internas.
       - name: Install dependencies
         run: pnpm install
 
@@ -117,6 +117,9 @@ jobs:
       # Los scripts están en package.json. En este caso, se ejecutará --> pnpm -r --filter db --filter geo run codegen
       - name: Codegen
         run: pnpm codegen
+
+
+      # Después de la priemera ejecució, probaremos los tres pasos siguientes.
 
       # Ejecutamos el linter Biome para validar el estilo del código
       #- name: Run Biome
@@ -195,6 +198,7 @@ jobs:
             DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 
       # Actualiza el tag en la rama main paramarcar la última versión desplegada.
+      # En la propuesta, plantemao usar ArgoCD Image Updater, pero, de momento, dejamos la opción por defecto de3 este workflow
       # Es necesario para integración con CD, es una referencia para ArgoCD.
       - name: Create/Update API tag
         if: github.ref == 'refs/heads/main'
