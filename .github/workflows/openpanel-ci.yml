@@ -232,7 +232,7 @@ jobs:
 
           # Push tag to remote
       #    git push origin "api" --force
-      #    echo "Pushed tag: api"
+      #    echo "Pushed tag: api".
 
       - name: Bump version (SemVer)
         if: github.ref == 'refs/heads/main'
