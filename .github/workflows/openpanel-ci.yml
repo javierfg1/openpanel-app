@@ -280,7 +280,7 @@ jobs:
       #    echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
       #    echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
       
-      # Aplicamos estrategia semver, obtenemos la versión de git
+      # Aplicamos estrategia semver, obtenemos la versión de git.
       - name: Get version
         id: version
         run: |
