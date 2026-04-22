@@ -36,7 +36,7 @@ jobs:
       - uses: dorny/paths-filter@v2
         id: filter
         with:
-          # Raa con la que comparar (main,staging) el commit actual
+          # Rama con la que comparar (main,staging) el commit actual
           #base: "main"
           base: "staging"
           filters: |
@@ -121,7 +121,7 @@ jobs:
         run: pnpm codegen
 
 
-      # Después de la priemera ejecució, probaremos los tres pasos siguientes.
+      # Después de la priemera ejecución, probaremos los tres pasos siguientes.
 
       # Ejecutamos el linter Biome para validar el estilo del código
       #- name: Run Biome
@@ -137,7 +137,6 @@ jobs:
       # Tests unitarios en test.ts
       #- name: Run tests
       #  run: pnpm test
-
 
   # Este job:
   #   Construye la imagen Docker del API
@@ -169,7 +168,8 @@ jobs:
       #    echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
       #    echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
-      # Aplicamos estrategia semver, obtenemos la versión de git
+      # Aplicamos estrategia semver, obtenemos la última versión de git
+      # Referencia "steps.version.outputs.version"
       - name: Get version
         id: version
         run: |
@@ -234,30 +234,25 @@ jobs:
       #    git push origin "api" --force
       #    echo "Pushed tag: api".
 
-      - name: Bump version (SemVer)
-        if: github.ref == 'refs/heads/main'
+      - name: Bump version
+        id: bump
         run: |
-          git fetch --tags
+          VERSION="${{ steps.version.outputs.version }}"
 
-          # obtener última versión
-          LAST_TAG=$(git tag --sort=-v:refname | head -n 1)
+          echo "Current version: $VERSION"
 
-          if [ -z "$LAST_TAG" ]; then
-            LAST_TAG="0.0.0"
-          fi
-
-          echo "Last tag: $LAST_TAG"
-
-          # separar versión
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_TAG"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
           PATCH=$((PATCH + 1))
-          NEW_TAG="$MAJOR.$MINOR.$PATCH"
 
-          echo "New tag: $NEW_TAG"
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 
-          git tag "$NEW_TAG"
-          git push origin "$NEW_TAG"
+          echo "New version: $NEW_VERSION"
+
+          git tag "$NEW_VERSION"
+          git push origin "$NEW_VERSION"
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
   build-and-push-worker:
     permissions:
@@ -335,30 +330,27 @@ jobs:
           # Push tag to remote
       #    git push origin "worker" --force
       #    echo "Pushed tag: worker"
-          
-      - name: Bump version (SemVer)
-        if: github.ref == 'refs/heads/main'
+
+      - name: Bump version
+        id: bump
         run: |
-          git fetch --tags
-          # obtener última versión
-          LAST_TAG=$(git tag --sort=-v:refname | head -n 1)
+          VERSION="${{ steps.version.outputs.version }}"
 
-          if [ -z "$LAST_TAG" ]; then
-            LAST_TAG="0.0.0"
-          fi
+          echo "Current version: $VERSION"
 
-          echo "Last tag: $LAST_TAG"
-
-          # separar versión
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_TAG"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
           PATCH=$((PATCH + 1))
-          NEW_TAG="$MAJOR.$MINOR.$PATCH"
 
-          echo "New tag: $NEW_TAG"
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 
-          git tag "$NEW_TAG"
-          git push origin "$NEW_TAG"
+          echo "New version: $NEW_VERSION"
+
+          git tag "$NEW_VERSION"
+          git push origin "$NEW_VERSION"
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT      
+          
 
   build-and-push-dashboard:
     permissions:
@@ -415,7 +407,7 @@ jobs:
           #tags: |
           #  ghcr.io/${{ env.repo_owner }}/dashboard:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           tags: |
-            ghcr.io/${{ env.repo_owner }}/api:${{ steps.version.outputs.version }}   
+            ghcr.io/${{ env.repo_owner }}/api:${{ steps.semver.outputs.version }}   
           build-args: |
             NO_CLOUDFLARE=1
 
@@ -435,28 +427,22 @@ jobs:
       #    # Push tag to remote
       #    git push origin "dashboard" --force
       #    echo "Pushed tag: dashboard"
-
-      - name: Bump version (SemVer)
-        if: github.ref == 'refs/heads/main'
+      - name: Bump version
+        id: bump
         run: |
-          git fetch --tags
+          VERSION="${{ steps.version.outputs.version }}"
 
-          # obtener última versión
-          LAST_TAG=$(git tag --sort=-v:refname | head -n 1)
+          echo "Current version: $VERSION"
 
-          if [ -z "$LAST_TAG" ]; then
-            LAST_TAG="0.0.0"
-          fi
-
-          echo "Last tag: $LAST_TAG"
-
-          # separar versión
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_TAG"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
           PATCH=$((PATCH + 1))
-          NEW_TAG="$MAJOR.$MINOR.$PATCH"
 
-          echo "New tag: $NEW_TAG"
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 
-          git tag "$NEW_TAG"
-          git push origin "$NEW_TAG"
+          echo "New version: $NEW_VERSION"
+
+          git tag "$NEW_VERSION"
+          git push origin "$NEW_VERSION"
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
