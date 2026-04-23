@@ -103,15 +103,20 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
-      # Guarda dependencias entre ejecuciones.
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        # Aceleramos el proceso de CI porque, si no cambia pnpm-lock.yaml, lo reutiliza.
+      # Guarda dependencias entre ejecuciones..
+      #- name: Setup pnpm cache
+      #  uses: actions/cache@v3
+      #  # Aceleramos el proceso de CI porque, si no cambia pnpm-lock.yaml, lo reutiliza.
+      #  with:
+      #    path: ${{ env.STORE_PATH }}
+      #    key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+      #    restore-keys: |
+      #      ${{ runner.os }}-pnpm-store-
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          run_install: true
 
       # Instala apps, packages, dependencias internas.
       - name: Install dependencies
