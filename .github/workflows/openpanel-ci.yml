@@ -59,6 +59,8 @@ jobs:
 
   lint-and-test:
     # Este job depende del job "changes".
+    # Needs conecta jobs
+    # [STEP] steps.filter.outputs.api --> [JOB OUTPUT] changes.outputs.api --> [OTRO JOB] needs.changes.outputs.api
     needs: changes
     if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.worker == 'true' || needs.changes.outputs.public == 'true' || needs.changes.outputs.dashboard == 'true' }}
     runs-on: self-hosted
