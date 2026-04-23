@@ -23,7 +23,7 @@ jobs:
   changes:
     runs-on: self-hosted
     # Expone el resultado del filtro como variables booleanas, es decir, 
-    # podremos hacer buils selectivos porque sabremos que servicios han sido modificados (evita builds innecesarios).
+    # podremos hacer buils selectivos porque sabremos que servicios han sido modificados (evita builds innecesarios)
     # Ejemplo uso posterior --> needs.changes.outputs.api == 'true'
     outputs:
       api: ${{ steps.filter.outputs.api }}
