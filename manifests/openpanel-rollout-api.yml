@@ -1,0 +1,39 @@
+  apiVersion: argoproj.io/v1alpha1
+  kind: Rollout
+  metadata:
+    name: openpanel-api
+    namespace: openpanel
+    annotations:
+      argocd-image-updater.argoproj.io/image-list: api=ghcr.io/javierfg1/api
+      argocd-image-updater.argoproj.io/api.update-strategy: semver
+      argocd-image-updater.argoproj.io/write-back-method: git
+  spec:
+    replicas: 1
+    strategy:
+      blueGreen:
+        activeService: openpanel-api-active
+        previewService: openpanel-api-preview
+        # Recibe tráfico por lo que antes de promocionar podría ser conveniente controlar que todo este bien (sería false en este caso).
+        autoPromotionEnabled: true
+    selector:
+      matchLabels:
+        app: openpanel-api
+    template:
+      metadata:
+        labels:
+          app: openpanel-api
+      spec:
+        containers:
+          - name: openpanel-api
+            image: ghcr.io/javierfg1/api:0.1.0
+            env:
+              # Una vez desplegados, hacer port forward para probar
+              - name: NEXT_PUBLIC_API_URL
+                value: "http://openpanel-api-active.openpanel.svc.cluster.local"
+              - name: DATABASE_URL
+                value: postgresql://postgres:postgres@op-db:5432/postgres
+              - name: REDIS_URL
+                value: redis://op-kv:6379
+            # Puerto igual al de dashboard. No hay conflicto porque son distintos pods.
+            ports:
+              - containerPort: 3000

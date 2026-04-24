@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: openpanel-worker
+  namespace: openpanel
+  namespace: openpanel
+  annotations:
+      argocd-image-updater.argoproj.io/image-list: worker=ghcr.io/javierfg1/worker
+      argocd-image-updater.argoproj.io/worker.update-strategy: semver
+      argocd-image-updater.argoproj.io/write-back-method: git
+spec:
+  replicas: 1
+  strategy:
+    blueGreen:
+      activeService: openpanel-worker-active
+      previewService: openpanel-worker-preview
+      # Lo ponemos a true porque no recibe ttráfico
+      autoPromotionEnabled: true
+  selector:
+    matchLabels:
+      app: openpanel-worker
+  template:
+    metadata:
+      labels:
+        app: openpanel-worker
+    spec:
+      containers:
+        - name: openpanel-worker
+          image: ghcr.io/javierfg1/worker:0.1.0
+          # Puerto para métricas
+          ports:
+            - containerPort: 9090

@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openpanel-release
+  namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: |
+      api=ghcr.io/javierfg1/api,
+      worker=ghcr.io/javierfg1/worker,
+      dashboard=ghcr.io/javierfg1/dashboard
+    argocd-image-updater.argoproj.io/api.update-strategy: semver
+    argocd-image-updater.argoproj.io/worker.update-strategy: semver
+    argocd-image-updater.argoproj.io/dashboard.update-strategy: semver
+    argocd-image-updater.argoproj.io/write-back-method: git
+spec:
+  destination:
+    name: in-cluster
+    namespace: openpanel
+  source:
+    path: .github/workflows
+    repoURL: https://github.com/javierfg1/openpanel-app.git
+    targetRevision: staging
+  sources: []
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=trueUnable to create application: existing application spec is different, use upsert flag to force update

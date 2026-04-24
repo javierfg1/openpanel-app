@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: openpanel-dashboard
+  namespace: openpanel
+  annotations:
+      argocd-image-updater.argoproj.io/image-list: dashboard=ghcr.io/javierfg1/dashboard
+      argocd-image-updater.argoproj.io/dashboard.update-strategy: semver
+      argocd-image-updater.argoproj.io/write-back-method: git
+spec:
+  replicas: 1
+  strategy:
+    blueGreen:
+      activeService: openpanel-dashboard-active
+      previewService: openpanel-dashboard-preview
+      # Recibe tráfico por lo que antes de promocionar podría ser conveniente controlar que todo este bien (sería false en este caso)
+      autoPromotionEnabled: true
+  selector:
+    matchLabels:
+      app: openpanel-dashboard
+  template:
+    metadata:
+      labels: 
+        app: openpanel-dashboard
+    spec:
+      containers:
+        - name: openpanel-dashboard
+          # al principo cuando aplicamo este yml, intenta buscar la imagen pero no a encuentra, por eso hay que hacer el rollout vía cmd
+          image: ghcr.io/javierfg1/dashboard:0.1.0
+          env:
+            # Una vez desplegados, hacer port forward para probar
+            - name: NEXT_PUBLIC_DASHBOARD_URL
+              value: "http://openpanel-dashboard-active.openpanel.svc.cluster.local"
+            - name: DATABASE_URL
+              value: postgresql://postgres:postgres@op-db:5432/postgres
+            - name: REDIS_URL
+              value: redis://op-kv:6379
+          ports:
+            - containerPort: 3000
