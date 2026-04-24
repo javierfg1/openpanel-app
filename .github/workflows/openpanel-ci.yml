@@ -145,6 +145,39 @@ jobs:
       #- name: Run tests
       #  run: pnpm test
 
+  version:
+    runs-on: self-hosted
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current version
+        id: current
+        run: |
+          git fetch --tags
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump
+        run: |
+          VERSION="${{ steps.current.outputs.version }}"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          PATCH=$((PATCH + 1))
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          echo "New version: $NEW_VERSION"
+
+          git tag "$NEW_VERSION"
+          git push origin "$NEW_VERSION"
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
   # Este job:
   #   Construye la imagen Docker del API
   #   La sube a un registry (GHCR)
@@ -156,37 +189,14 @@ jobs:
       packages: write
       contents: write
     # Depende de los  jobs "changes" y "lint-and-test".
-    needs: [changes, lint-and-test]
+    needs: [changes, lint-and-test, version]
     # Solo se ejecuta si se ha modificado api.
     if: ${{ needs.changes.outputs.api == 'true' }}
     runs-on: self-hosted
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # Se generan tags dinámicos, se guardan en GITHUB_OUTPUT, y se referencian como "steps.tags.outputs.branch_name".
-      #- name: Generate tags
-      #  id: tags
-      #  run: |
-      #    # Sanitize branch name by replacing / with -
-      #    BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
-      #    # Get first 4 characters of commit SHA
-      #    SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-4)
-      #    echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-      #    echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-
-      # Aplicamos estrategia semver, obtenemos la última versión de git
-      # Referencia "steps.version.outputs.version"
-      - name: Get version
-        id: version
-        run: |
-          git fetch --tags
-
-          # Si no hay tag, versión base
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.1.0")
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
+   
       # Habilita builds avanzados, cache, multi-platform
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -217,49 +227,9 @@ jobs:
           #tags: |
             #ghcr.io/${{ env.repo_owner }}/api:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           tags: |
-            ghcr.io/${{ env.repo_owner }}/api:${{ steps.version.outputs.version }}
+            ghcr.io/${{ env.repo_owner }}/api:${{ needs.version.outputs.version }}
           build-args: |
             DATABASE_URL=postgresql://postgres:postgres@op-db:5432/postgres
-
-      # Actualiza el tag en la rama main para marcar la última versión desplegada.
-      # En la propuesta, plantemao usar ArgoCD Image Updater, pero, de momento, dejamos la opción por defecto de este workflow
-      # Es necesario para integración con CD, es una referencia para ArgoCD.
-      # - name: Create/Update API tag
-      #  if: github.ref == 'refs/heads/main'
-      #  run: |
-      #    # Delete existing tag if it exists
-      #    if git tag -l "api" | grep -q "api"; then
-      #      git tag -d "api"
-      #      echo "Deleted local tag: api"
-      #    fi
-
-      #    # Create new tag
-      #    git tag "api" "${{ github.sha }}"
-      #    echo "Created tag: api"
-
-          # Push tag to remote
-      #    git push origin "api" --force
-      #    echo "Pushed tag: api".
-
-      - name: Bump version
-        id: bump
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          echo "Current version: $VERSION"
-
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-          PATCH=$((PATCH + 1))
-
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-
-          echo "New version: $NEW_VERSION"
-
-          git tag "$NEW_VERSION"
-          git push origin "$NEW_VERSION"
-
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
   build-and-push-worker:
     permissions:
@@ -271,28 +241,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      #- name: Generate tags
-      #  id: tags
-      #  run: |
-      #    # Sanitize branch name by replacing / with -
-      #    BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
-      #    # Get first 4 characters of commit SHA
-      #    SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-4)
-      #    echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-      #    echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-      
-      # Aplicamos estrategia semver, obtenemos la versión de git.
-      - name: Get version
-        id: version
-        run: |
-          git fetch --tags
-
-          # Si no hay tag, versión base
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.1.0")
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-      
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -317,47 +265,9 @@ jobs:
           #tags: |
           #  ghcr.io/${{ env.repo_owner }}/worker:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           tags: |
-            ghcr.io/${{ env.repo_owner }}/worker:${{ steps.version.outputs.version }}
+            ghcr.io/${{ env.repo_owner }}/worker:${{ needs.version.outputs.version }}
           build-args: |
             DATABASE_URL=postgresql://postgres:postgres@op-db:5432/postgres
-
-      #- name: Create/Update Worker tag
-      #  if: github.ref == 'refs/heads/main'
-      #  run: |
-      #    # Delete existing tag if it exists
-      #    if git tag -l "worker" | grep -q "worker"; then
-      #      git tag -d "worker"
-      #      echo "Deleted local tag: worker"
-      #    fi
-
-      #    # Create new tag
-      #    git tag "worker" "${{ github.sha }}"
-      #    echo "Created tag: worker"
-
-          # Push tag to remote
-      #    git push origin "worker" --force
-      #    echo "Pushed tag: worker"
-
-      - name: Bump version
-        id: bump
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          echo "Current version: $VERSION"
-
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-          PATCH=$((PATCH + 1))
-
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-
-          echo "New version: $NEW_VERSION"
-
-          git tag "$NEW_VERSION"
-          git push origin "$NEW_VERSION"
-
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT      
-          
 
   build-and-push-dashboard:
     permissions:
@@ -369,27 +279,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      #- name: Generate tags
-      #  id: tags
-      #  run: |
-      #    # Sanitize branch name by replacing / with -
-      #    BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
-      #    # Get first 4 characters of commit SHA
-      #    SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-4)
-      #    echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-      #    echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
-
-      # Aplicamos estrategia semver, obtenemos la versión de git
-      - name: Get version
-        id: version
-        run: |
-          git fetch --tags
-
-          # Si no hay tag, versión base
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.1.0")
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -414,42 +303,6 @@ jobs:
           #tags: |
           #  ghcr.io/${{ env.repo_owner }}/dashboard:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           tags: |
-            ghcr.io/${{ env.repo_owner }}/api:${{ steps.version.outputs.version }}   
+            ghcr.io/${{ env.repo_owner }}/api:${{ needs.version.outputs.version }}   
           build-args: |
             NO_CLOUDFLARE=1
-
-      #- name: Create/Update Dashboard tag
-      #  if: github.ref == 'refs/heads/main'
-      #  run: |
-      #    # Delete existing tag if it exists
-      #    if git tag -l "dashboard" | grep -q "dashboard"; then
-      #      git tag -d "dashboard"
-      #      echo "Deleted local tag: dashboard"
-      #    fi
-
-      #    # Create new tag
-      #    git tag "dashboard" "${{ github.sha }}"
-      #    echo "Created tag: dashboard"
-
-      #    # Push tag to remote
-      #    git push origin "dashboard" --force
-      #    echo "Pushed tag: dashboard"
-      - name: Bump version
-        id: bump
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          echo "Current version: $VERSION"
-
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-          PATCH=$((PATCH + 1))
-
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-
-          echo "New version: $NEW_VERSION"
-
-          git tag "$NEW_VERSION"
-          git push origin "$NEW_VERSION"
-
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
