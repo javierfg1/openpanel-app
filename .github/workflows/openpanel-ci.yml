@@ -146,7 +146,8 @@ jobs:
       #  run: pnpm test
 
   version:
-    runs-on: self-hosted
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.bump.outputs.version }}
     steps:
