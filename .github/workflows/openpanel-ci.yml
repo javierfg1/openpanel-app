@@ -235,7 +235,7 @@ jobs:
     permissions:
       packages: write
       contents: write
-    needs: [changes, lint-and-test]
+    needs: [changes, lint-and-test, version]
     if: ${{ needs.changes.outputs.worker == 'true' }}
     runs-on: self-hosted
     steps:
@@ -273,7 +273,7 @@ jobs:
     permissions:
       packages: write
       contents: write
-    needs: [changes, lint-and-test]
+    needs: [changes, lint-and-test,version]
     if: ${{ needs.changes.outputs.dashboard == 'true' }}
     runs-on: self-hosted
     steps:
