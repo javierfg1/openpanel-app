@@ -5,13 +5,14 @@ metadata:
   namespace: argocd
   annotations:
     argocd-image-updater.argoproj.io/image-list: |
-      api=ghcr.io/javierfg1/api,
-      worker=ghcr.io/javierfg1/worker,
-      dashboard=ghcr.io/javierfg1/dashboard
+      openpanel-api=ghcr.io/javierfg1/api
+      openpanel-worker=ghcr.io/javierfg1/worker
+      openpanel-dashboard=ghcr.io/javierfg1/dashboard
     argocd-image-updater.argoproj.io/api.update-strategy: semver
     argocd-image-updater.argoproj.io/worker.update-strategy: semver
     argocd-image-updater.argoproj.io/dashboard.update-strategy: semver
     argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/write-back-target: plain
 spec:
   destination:
     name: in-cluster
