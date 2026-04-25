@@ -4,7 +4,7 @@ metadata:
   name: openpanel
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/image-list: openpanel-api=ghcr.io/javierfg1/api, openpanel-worker=ghcr.io/javierfg1/worker, openpanel-dashboard=ghcr.io/javierfg1/dashboard
+    argocd-image-updater.argoproj.io/image-list: openpanel-api=ghcr.io/javierfg1/api,openpanel-worker=ghcr.io/javierfg1/worker,openpanel-dashboard=ghcr.io/javierfg1/dashboard
     argocd-image-updater.argoproj.io/openpanel-api.update-strategy: semver
     argocd-image-updater.argoproj.io/openpanel-worker.update-strategy: semver
     argocd-image-updater.argoproj.io/openpanel-dashboard.update-strategy: semver
