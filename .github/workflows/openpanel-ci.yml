@@ -312,6 +312,6 @@ jobs:
           #tags: |
           #  ghcr.io/${{ env.repo_owner }}/dashboard:${{ steps.tags.outputs.branch_name }}-${{ steps.tags.outputs.short_sha }}
           tags: |
-            ghcr.io/${{ env.repo_owner }}/api:${{ needs.version.outputs.version }}   
+            ghcr.io/${{ env.repo_owner }}/dashboard:${{ needs.version.outputs.version }}   
           build-args: |
             NO_CLOUDFLARE=1

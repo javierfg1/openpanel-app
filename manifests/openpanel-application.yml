@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: openpanel-release
+  name: openpanel
   namespace: argocd
   annotations:
     argocd-image-updater.argoproj.io/image-list: |
@@ -17,7 +17,7 @@ spec:
     name: in-cluster
     namespace: openpanel
   source:
-    path: .github/workflows
+    path: manifests
     repoURL: https://github.com/javierfg1/openpanel-app.git
     targetRevision: staging
   sources: []
@@ -27,4 +27,4 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=trueUnable to create application: existing application spec is different, use upsert flag to force update
+      - CreateNamespace=true

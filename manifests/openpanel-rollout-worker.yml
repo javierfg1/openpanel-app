@@ -3,11 +3,6 @@ kind: Rollout
 metadata:
   name: openpanel-worker
   namespace: openpanel
-  namespace: openpanel
-  annotations:
-      argocd-image-updater.argoproj.io/image-list: worker=ghcr.io/javierfg1/worker
-      argocd-image-updater.argoproj.io/worker.update-strategy: semver
-      argocd-image-updater.argoproj.io/write-back-method: git
 spec:
   replicas: 1
   strategy:
