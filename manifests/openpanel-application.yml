@@ -10,6 +10,7 @@ metadata:
     argocd-image-updater.argoproj.io/openpanel-dashboard.update-strategy: semver
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/write-back-target: plain
+    argocd-image-updater.argoproj.io/force-update: "true"
 spec:
   destination:
     name: in-cluster
