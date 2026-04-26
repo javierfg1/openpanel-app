@@ -25,7 +25,9 @@
             env:
               # Una vez desplegados, hacer port forward para probar
               - name: NEXT_PUBLIC_API_URL
-                value: "http://openpanel-api-active.openpanel.svc.cluster.local"
+                #value: "http://openpanel-api-active.openpanel.svc.cluster.local"
+                # Ponemos localhost para luego hacer port forward
+                value: "http://localhost:9094"
               - name: DATABASE_URL
                 value: postgresql://postgres:postgres@op-db:5432/postgres
               - name: REDIS_URL
