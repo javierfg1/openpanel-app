@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: openpanel-worker
-          image: ghcr.io/javierfg1/worker:0.1.0
+          image: ghcr.io/javierfg1/worker:0.1.4
           # Puerto para métricas
           ports:
             - containerPort: 9090

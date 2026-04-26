@@ -21,7 +21,7 @@
       spec:
         containers:
           - name: openpanel-api
-            image: ghcr.io/javierfg1/api:0.1.0
+            image: ghcr.io/javierfg1/api:0.1.4
             env:
               # Una vez desplegados, hacer port forward para probar
               - name: NEXT_PUBLIC_API_URL
