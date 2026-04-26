@@ -1,6 +1,6 @@
 Welcome to your new TanStack app! 
 
-# Getting Started
+# Getting Started.
 
 To run this application:
 
