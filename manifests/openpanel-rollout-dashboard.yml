@@ -27,7 +27,7 @@ spec:
             # Una vez desplegados, hacer port forward para probar
             - name: NEXT_PUBLIC_API_URL
               # Ponemos localhost para luego hacer port forward
-              value: "http://localhost:9093/api"
+              value: "http://localhost:9093"
             - name: DATABASE_URL
               value: postgresql://postgres:postgres@op-db:5432/postgres
             - name: REDIS_URL
