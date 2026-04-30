@@ -276,6 +276,28 @@ Scope: all 34 workspace projects
  35008 |       metro-file-map: 0.80.6
  35009 |       metro-resolver: 0.80.6
 
+ # Alarmas
+
+ /home/javi/DEVOPS/9_elgransalto/openpanel-repos/openpanel-platform/alerts/webhook-receiver-python.yaml
+
+Debes mandar un vídeo breve mostrando:
+
+Logs del webhook con alertas (warning/critical).
+
+Prometheus /alerts con estados (Inactive → Pending → Firing).
+
+Alertmanager tras ejecutar el script de CHAOS
+
+kubectl logs -f deployment/webhook-receiver -n monitoring-8
+kubectl get pods -n monitoring-8 -l app=webhook-receiver
+
+
+
+
+
+
+
+
  
 
 

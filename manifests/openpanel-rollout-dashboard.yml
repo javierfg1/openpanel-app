@@ -3,6 +3,11 @@ kind: Rollout
 metadata:
   name: openpanel-dashboard
   namespace: openpanel
+# Añadir anotaciones para que escrapear métricas
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"   # 👈 puerto real del container
+    prometheus.io/path: "/metrics"
 spec:
   replicas: 1
   strategy:
@@ -26,10 +31,10 @@ spec:
           env:
             # Una vez desplegados, hacer port forward para probar
             - name: NEXT_PUBLIC_API_URL
-              # Ponemos localhost para luego hacer port forward
+              # Ponemos EL SERVICIO DEL API para luego hacer port forward
               value: "http://openpanel-api-active:8087"
             - name: DATABASE_URL
-              value: postgresql://postgres:postgres@op-db:5432/postgres
+              value: postgresql://$(DB_USER):$(DB_PASSWORD)@op-db:5432/postgres
             - name: REDIS_URL
               value: redis://op-kv:6379
           ports:

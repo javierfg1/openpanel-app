@@ -3,6 +3,11 @@ kind: Rollout
 metadata:
   name: openpanel-worker
   namespace: openpanel
+# Añadir anotaciones para que escrapear métricas
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"   # 👈 puerto real del container
+    prometheus.io/path: "/metrics"
 spec:
   replicas: 1
   strategy:

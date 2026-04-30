@@ -3,6 +3,11 @@
   metadata:
     name: openpanel-api
     namespace: openpanel
+    # Añadir anotaciones para que escrapear métricas
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "3000"   # 👈 puerto real del container
+      prometheus.io/path: "/metrics"
   spec:
     replicas: 1
     strategy:
@@ -24,8 +29,19 @@
             image: ghcr.io/javierfg1/api:0.1.4
             env:
               # Una vez desplegados, hacer port forward para probar
+              env:
+              - name: ORACLE_USER
+                   valueFrom:
+                      secretKeyRef:
+                          name: oracle-credentials
+                          key: ORACLE_USER
+              - name: ORACLE_PASSWORD
+                   valueFrom:
+                      secretKeyRef:
+                          name: oracle-credentials
+                          key: ORACLE_PASSWORD
               - name: DATABASE_URL
-                value: postgresql://postgres:postgres@op-db:5432/postgres
+                value: postgresql://$(DB_USER):$(DB_PASSWORD)@op-db:5432/postgres
               - name: REDIS_URL
                 value: redis://op-kv:6379
             # Puerto igual al de dashboard. No hay conflicto porque son distintos pods.

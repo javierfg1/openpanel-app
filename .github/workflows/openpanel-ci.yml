@@ -36,7 +36,7 @@ jobs:
       - uses: dorny/paths-filter@v2
         id: filter
         with:
-          # Rama con la que comparar (main,staging) el commit actual
+          # Rama con la que comparar (main,staging) el commit actual.
           #base: "main"
           base: "staging"
           filters: |
