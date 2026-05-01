@@ -8,7 +8,7 @@ import { composeChatTools } from './tools';
 /**
  * Create one agent per model in the whitelist. All agents share the
  * same context schema, instruction builder, and dynamic tool composer
- * — they only differ by which provider model runs the conversation.
+ * — they only differ by which provider model runs the conversation..
  *
  * The frontend "model picker" is an "agent picker" in disguise: it
  * just selects which agent name to pass to `useAgent()`.

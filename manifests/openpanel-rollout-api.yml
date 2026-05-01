@@ -31,15 +31,15 @@
               # Una vez desplegados, hacer port forward para probar
               env:
               - name: ORACLE_USER
-                   valueFrom:
-                      secretKeyRef:
-                          name: oracle-credentials
-                          key: ORACLE_USER
+                valueFrom:
+                    secretKeyRef:
+                        name: oracle-credentials
+                        key: ORACLE_USER
               - name: ORACLE_PASSWORD
-                   valueFrom:
-                      secretKeyRef:
-                          name: oracle-credentials
-                          key: ORACLE_PASSWORD
+                valueFrom:
+                    secretKeyRef:
+                        name: oracle-credentials
+                        key: ORACLE_PASSWORD
               - name: DATABASE_URL
                 value: postgresql://$(DB_USER):$(DB_PASSWORD)@op-db:5432/postgres
               - name: REDIS_URL
