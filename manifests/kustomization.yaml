@@ -2,9 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - openpanel-rollout-api.yaml
-  - openpanel-rollout-worker.yaml
-  - openpanel-rollout-dashboard.yaml
+  - openpanel-rollout-api.yml
+  - openpanel-rollout-worker.yml
+  - openpanel-rollout-dashboard.yml
 
 images:
   - name: ghcr.io/javierfg1/api
