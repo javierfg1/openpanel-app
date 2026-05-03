@@ -26,7 +26,7 @@
       spec:
         containers:
           - name: openpanel-api
-            image: ghcr.io/javierfg1/api:dummy
+            image: ghcr.io/javierfg1/api:0.1.7
             env:
               # Una vez desplegados, hacer port forward para probar
               - name: ORACLE_USER
