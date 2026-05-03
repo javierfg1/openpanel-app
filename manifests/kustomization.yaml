@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1 
+kind: Kustomization
+
+resources:
+  - openpanel-rollout-api.yaml
+  - openpanel-rollout-worker.yaml
+  - openpanel-rollout-dashboard.yaml
+
+images:
+  - name: ghcr.io/javierfg1/api
+    newTag: latest
+
+  - name: ghcr.io/javierfg1/worker
+    newTag: latest
+
+  - name: ghcr.io/javierfg1/dashboard
+    newTag: latest

@@ -1,0 +1,45 @@
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: openpanel-updater
+  namespace: argocd
+spec:
+
+  # 🔧 defaults globales
+  commonUpdateSettings:
+    updateStrategy: latest
+    allowTags: ".*"
+    pullSecret: ghcr-creds
+
+  # 🔧 cómo escribir cambios
+  writeBackConfig:
+    method: argocd
+
+  applicationRefs:
+    - namePattern: "openpanel"
+
+      # puedes usar labels en vez de namePattern si quieres
+      # labelSelectors:
+      #   matchLabels:
+      #     app.kubernetes.io/name: openpanel
+
+      commonUpdateSettings:
+        updateStrategy: latest
+
+      images:
+        - alias: api
+          imageName: ghcr.io/javierfg1/api:latest
+
+          commonUpdateSettings:
+            updateStrategy: latest
+
+          manifestTargets:
+            kustomize:
+              name: ghcr.io/javierfg1/api
+
+        - alias: dashboard
+          imageName: ghcr.io/javierfg1/dashboard:latest
+
+          manifestTargets:
+            kustomize:
+              name: ghcr.io/javierfg1/dashboard
