@@ -5,26 +5,17 @@ metadata:
   namespace: argocd
 spec:
 
-  # 🔧 defaults globales
-  #commonUpdateSettings:
-  #  updateStrategy: latest
-  #  allowTags: ".*"
-  #  pullSecret: ghcr-creds
-
-  # 🔧 cómo escribir cambios
+  
+  # 🔧 cómo escribir cambios (no modificamos github rollouts, sino que comunicamos directamente a Argo CD los cambios para que despliegue)
   writeBackConfig:
     method: argocd
 
   applicationRefs:
     - namePattern: "openpanel"
 
-      # puedes usar labels en vez de namePattern si quieres
-      # labelSelectors:
-      #   matchLabels:
-      #     app.kubernetes.io/name: openpanel
-
       commonUpdateSettings:
         updateStrategy: semver
+        pullSecret: ghcr-creds
 
       images:
         - alias: api
