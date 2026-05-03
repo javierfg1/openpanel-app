@@ -30,12 +30,23 @@ spec:
           image: ghcr.io/javierfg1/dashboard:0.1.5
           env:
             # Una vez desplegados, hacer port forward para probar
-            - name: NEXT_PUBLIC_API_URL
+              - name: NEXT_PUBLIC_API_URL
               # Ponemos EL SERVICIO DEL API para luego hacer port forward
-              value: "http://openpanel-api-active:8087"
-            - name: DATABASE_URL
-              value: postgresql://$(DB_USER):$(DB_PASSWORD)@op-db:5432/postgres
-            - name: REDIS_URL
-              value: redis://op-kv:6379
+                value: "http://openpanel-api-active:8087"
+              # Una vez desplegados, hacer port forward para probar
+              - name: ORACLE_USER
+                valueFrom:
+                    secretKeyRef:
+                        name: oracle-credentials
+                        key: ORACLE_USER
+              - name: ORACLE_PASSWORD
+                valueFrom:
+                    secretKeyRef:
+                        name: oracle-credentials
+                        key: ORACLE_PASSWORD
+              - name: DATABASE_URL
+                value: postgresql://$(ORACLE_USER):$(ORACLE_PASSWORD)@op-db:5432/postgres
+              - name: REDIS_URL
+                value: redis://op-kv:6379
           ports:
             - containerPort: 3000
