@@ -27,7 +27,7 @@ spec:
       containers:
         - name: openpanel-dashboard
           # al principo cuando aplicamo este yml, intenta buscar la imagen pero no a encuentra, por eso hay que hacer el rollout vía cmd
-          image: ghcr.io/javierfg1/dashboard:0.1.5
+          image: ghcr.io/javierfg1/dashboard
           env:
             # Una vez desplegados, hacer port forward para probar
               - name: NEXT_PUBLIC_API_URL
