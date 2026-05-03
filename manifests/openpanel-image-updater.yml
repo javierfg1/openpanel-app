@@ -28,21 +28,21 @@ spec:
 
       images:
         - alias: api
-          imageName: ghcr.io/javierfg1/api:1.0.0
+          imageName: ghcr.io/javierfg1/api
 
           manifestTargets:
             kustomize:
               name: ghcr.io/javierfg1/api
 
         - alias: dashboard
-          imageName: ghcr.io/javierfg1/dashboard:1.0.0
+          imageName: ghcr.io/javierfg1/dashboard
 
           manifestTargets:
             kustomize:
               name: ghcr.io/javierfg1/dashboard
 
         - alias: worker
-          imageName: ghcr.io/javierfg1/worker:1.0.0
+          imageName: ghcr.io/javierfg1/worker
 
           manifestTargets:
             kustomize:
