@@ -24,22 +24,26 @@ spec:
       #     app.kubernetes.io/name: openpanel
 
       commonUpdateSettings:
-        updateStrategy: latest
+        updateStrategy: semver
 
       images:
         - alias: api
-          imageName: ghcr.io/javierfg1/api:latest
-
-          commonUpdateSettings:
-            updateStrategy: latest
+          imageName: ghcr.io/javierfg1/api:1.0.0
 
           manifestTargets:
             kustomize:
               name: ghcr.io/javierfg1/api
 
         - alias: dashboard
-          imageName: ghcr.io/javierfg1/dashboard:latest
+          imageName: ghcr.io/javierfg1/dashboard:1.0.0
 
           manifestTargets:
             kustomize:
               name: ghcr.io/javierfg1/dashboard
+
+        - alias: worker
+          imageName: ghcr.io/javierfg1/worker:1.0.0
+
+          manifestTargets:
+            kustomize:
+              name: ghcr.io/javierfg1/worker
