@@ -78,9 +78,9 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     # Preparar el entorno y deja lista la aplicación para:
-    #     Instalar dependencias
-    #     Generar código
-    #     Ejecutar lint / tests
+    #     Instalar dependencias.
+    #     Generar código.
+    #     Ejecutar lint / tests.
     steps:
       # Clona repositorio en el runner.
       - uses: actions/checkout@v4
